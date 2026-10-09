@@ -3,6 +3,16 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectRoot
 $reportedByChild = $false
 
+function Test-FuYouXuanEndpoint {
+    param([string]$Port)
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 5
+        return $response.StatusCode -eq 200
+    } catch {
+        return $false
+    }
+}
+
 if (-not (Test-Path ".env")) {
     $rootPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
     $appPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
@@ -32,11 +42,42 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
         throw "Docker startup inside WSL failed."
     }
     $reportedByChild = $true
+
+    # Some Windows 10 + WSL2 installations do not keep automatic localhost
+    # forwarding active. Add a loopback-only fallback that is refreshed each run.
+    if (-not (Test-FuYouXuanEndpoint -Port $httpPort)) {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+        $isAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        if (-not $isAdministrator) {
+            throw "Windows cannot reach WSL through localhost. Re-run PowerShell as Administrator so the startup script can repair the local port forwarding."
+        }
+
+        $wslIpOutput = (wsl.exe --cd $ProjectRoot hostname -I).Trim()
+        $wslIp = ($wslIpOutput -split '\s+')[0]
+        if (-not $wslIp) {
+            throw "Unable to determine the WSL2 address."
+        }
+
+        netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=$httpPort 2>$null | Out-Null
+        netsh interface portproxy add v4tov4 listenaddress=127.0.0.1 listenport=$httpPort connectaddress=$wslIp connectport=$httpPort | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unable to configure Windows localhost forwarding for WSL2."
+        }
+        Restart-Service iphlpsvc -Force
+        Start-Sleep -Seconds 2
+    }
 } else {
     throw "Docker was not found. Install Docker Desktop or Docker Engine inside WSL2 first."
+}
+
+if (-not (Test-FuYouXuanEndpoint -Port $httpPort)) {
+    throw "All containers started, but Windows still cannot reach http://localhost:$httpPort."
 }
 
 if (-not $reportedByChild) {
     Write-Host ""
     Write-Host "FuYouXuan is ready: http://localhost:$httpPort"
+} else {
+    Write-Host "Windows access is ready: http://localhost:$httpPort"
 }
