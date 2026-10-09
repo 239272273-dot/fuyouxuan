@@ -50,7 +50,14 @@ services:
   redis-master:
     image: redis:7.2.7-alpine
     restart: unless-stopped
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    command:
+      - sh
+      - -c
+      - |
+        if [ -f /data/appendonlydir/appendonly.aof.manifest ]; then
+          yes | redis-check-aof --fix /data/appendonlydir/appendonly.aof.manifest
+        fi
+        exec redis-server /usr/local/etc/redis/redis.conf
     volumes:
       - ./docker/redis/master.conf:/usr/local/etc/redis/redis.conf:ro
       - redis-master-data:/data
@@ -64,7 +71,14 @@ services:
   redis-replica:
     image: redis:7.2.7-alpine
     restart: unless-stopped
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    command:
+      - sh
+      - -c
+      - |
+        if [ -f /data/appendonlydir/appendonly.aof.manifest ]; then
+          yes | redis-check-aof --fix /data/appendonlydir/appendonly.aof.manifest
+        fi
+        exec redis-server /usr/local/etc/redis/redis.conf
     volumes:
       - ./docker/redis/replica.conf:/usr/local/etc/redis/redis.conf:ro
       - redis-replica-data:/data
