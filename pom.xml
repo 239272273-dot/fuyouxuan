@@ -8,11 +8,11 @@
         <version>2.3.12.RELEASE</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.hmdp</groupId>
-    <artifactId>hm-dianping</artifactId>
+    <groupId>com.fuyouxuan</groupId>
+    <artifactId>fuyouxuan</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>hm-dianping</name>
-    <description>Demo project for Spring Boot</description>
+    <name>fuyouxuan</name>
+    <description>Enterprise employee benefits flash-sale and community platform</description>
     <properties>
         <java.version>1.8</java.version>
     </properties>
@@ -54,7 +54,7 @@
             <groupId>mysql</groupId>
             <artifactId>mysql-connector-java</artifactId>
             <scope>runtime</scope>
-            <version>5.1.47</version>
+            <version>8.0.33</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -71,17 +71,35 @@
             <artifactId>mybatis-plus-boot-starter</artifactId>
             <version>3.4.3</version>
         </dependency>
-        <!--hutool-->
+        <!-- Utility library -->
         <dependency>
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-all</artifactId>
             <version>5.7.17</version>
         </dependency>
-        <!--redisson-->
+        <!-- Process-local cache -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>2.9.3</version>
+        </dependency>
+        <!-- Distributed locks with watchdog renewal; uses the same Redis Sentinel topology. -->
         <dependency>
             <groupId>org.redisson</groupId>
             <artifactId>redisson</artifactId>
-            <version>3.13.6</version>
+            <version>3.16.8</version>
+        </dependency>
+        <!-- RocketMQ 4.x client; wire-compatible with the 4.9.7 container broker. -->
+        <dependency>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+            <version>4.9.8</version>
+        </dependency>
+        <!-- MySQL binlog listener for cache invalidation -->
+        <dependency>
+            <groupId>top.javatool</groupId>
+            <artifactId>canal-spring-boot-starter</artifactId>
+            <version>1.2.1-RELEASE</version>
         </dependency>
     </dependencies>
 

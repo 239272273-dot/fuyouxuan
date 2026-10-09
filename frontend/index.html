@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="福优选企业内部福利抢购与员工社区平台">
+  <title>福优选 · 企业福利中心</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2218%22 fill=%22%23165DFF%22/><path d=%22M18 18h30v9H28v8h16v9H28v15H18z%22 fill=%22white%22/></svg>">
+  <link rel="stylesheet" href="./vendor/element.css">
+  <link rel="stylesheet" href="./css/app.css?v=20261009">
+</head>
+<body>
+<div id="app" v-cloak>
+  <transition name="fade">
+    <section class="login-page" v-if="!authenticated">
+      <div class="login-visual">
+        <div class="brand brand--light"><span class="brand-mark">F</span><span>福优选</span></div>
+        <div class="login-copy">
+          <span class="eyebrow eyebrow--light">EMPLOYEE BENEFITS</span>
+          <h1>让每一份福利<br>准时抵达每位员工</h1>
+          <p>企业专属福利抢购、权益管理与员工社区，一个入口全部完成。</p>
+        </div>
+        <div class="login-proof">
+          <div><strong>原子扣减</strong><span>高并发库存保护</span></div>
+          <div><strong>异步落单</strong><span>秒杀请求快速响应</span></div>
+          <div><strong>多级缓存</strong><span>热点福利毫秒访问</span></div>
+        </div>
+      </div>
+      <div class="login-panel">
+        <div class="mobile-brand"><span class="brand-mark">F</span><strong>福优选</strong></div>
+        <div class="login-form-card">
+          <span class="eyebrow">WELCOME BACK</span>
+          <h2>员工登录</h2>
+          <p class="muted">使用企业登记手机号获取验证码</p>
+          <el-form @submit.native.prevent="login">
+            <el-form-item label="手机号">
+              <el-input v-model.trim="loginForm.phone" maxlength="11" placeholder="请输入 11 位手机号" prefix-icon="el-icon-mobile-phone"></el-input>
+            </el-form-item>
+            <el-form-item label="验证码">
+              <div class="code-row">
+                <el-input v-model.trim="loginForm.code" maxlength="6" placeholder="6 位验证码" prefix-icon="el-icon-key"></el-input>
+                <el-button @click="sendCode" :loading="sendingCode" :disabled="countdown > 0">{{ countdown ? countdown + 's' : '获取验证码' }}</el-button>
+              </div>
+            </el-form-item>
+            <div class="demo-code" v-if="demoCode">Demo 验证码：<button type="button" @click="loginForm.code = demoCode">{{demoCode}}</button></div>
+            <el-button class="primary-action" type="primary" native-type="submit" :loading="loggingIn">进入福优选</el-button>
+          </el-form>
+          <div class="login-note"><i class="el-icon-lock"></i> 仅限企业内部员工访问</div>
+        </div>
+      </div>
+    </section>
+  </transition>
+
+  <div class="workspace" v-if="authenticated">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">F</span><span>福优选</span></div>
+      <nav class="side-nav">
+        <button v-for="item in navItems" :key="item.key" :class="{active: view === item.key}" @click="navigate(item.key)">
+          <i :class="item.icon"></i><span>{{item.label}}</span>
+        </button>
+      </nav>
+      <div class="sidebar-card">
+        <span class="sidebar-card__icon"><i class="el-icon-present"></i></span>
+        <strong>福利小贴士</strong>
+        <p>限时福利数量有限，提交后可在“我的福利”查看处理结果。</p>
+      </div>
+      <button class="employee-mini" @click="navigate('profile')">
+        <img v-if="user.icon" class="avatar avatar-image" :src="user.icon" alt="员工头像">
+        <span v-else class="avatar">{{avatarText}}</span>
+        <span><strong>{{user.nickName || '福优员工'}}</strong><small>企业员工</small></span>
+        <i class="el-icon-arrow-right"></i>
+      </button>
+    </aside>
+
+    <main class="main-shell">
+      <header class="topbar">
+        <div>
+          <span class="breadcrumb">福优选 / {{activeNavLabel}}</span>
+          <h2>{{pageTitle}}</h2>
+        </div>
+        <div class="top-actions">
+          <label class="global-search">
+            <i class="el-icon-search"></i>
+            <input v-model.trim="searchText" placeholder="搜索福利或动态">
+          </label>
+          <button class="icon-button" title="刷新" @click="refreshCurrent"><i class="el-icon-refresh"></i></button>
+          <button class="icon-button" title="退出" @click="logout"><i class="el-icon-switch-button"></i></button>
+        </div>
+      </header>
+
+      <div class="page-content" v-loading="pageLoading">
+        <section v-show="view === 'benefits'" class="page-section">
+          <div class="hero-card">
+            <div class="hero-content">
+              <span class="hero-tag">EMPLOYEE · EXCLUSIVE</span>
+              <h1>本月员工专享福利<br><em>限时开放领取</em></h1>
+              <p>精选餐饮、健康、节日关怀与学习权益，Redis 原子校验保障每一次公平抢购。</p>
+              <div class="hero-actions">
+                <el-button type="primary" @click="scrollToBenefits">立即查看福利</el-button>
+                <button class="text-action" @click="navigate('orders')">我的领取记录 <i class="el-icon-right"></i></button>
+              </div>
+            </div>
+            <div class="hero-visual">
+              <div class="gift-orbit orbit-one"></div><div class="gift-orbit orbit-two"></div>
+              <div class="gift-box"><span></span><i class="el-icon-present"></i></div>
+              <div class="floating-chip chip-one">企业专享</div>
+              <div class="floating-chip chip-two">限量秒杀</div>
+            </div>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card"><span class="stat-icon blue"><i class="el-icon-goods"></i></span><div><small>福利分类</small><strong>{{types.length || 0}}</strong></div><span class="trend">持续更新</span></div>
+            <div class="stat-card"><span class="stat-icon green"><i class="el-icon-lightning"></i></span><div><small>秒杀通道</small><strong>16</strong></div><span class="trend">并行分片</span></div>
+            <div class="stat-card"><span class="stat-icon purple"><i class="el-icon-coin"></i></span><div><small>缓存层级</small><strong>3</strong></div><span class="trend">热点保护</span></div>
+            <div class="stat-card"><span class="stat-icon orange"><i class="el-icon-chat-dot-round"></i></span><div><small>员工动态</small><strong>{{posts.length || 0}}</strong></div><span class="trend">内部分享</span></div>
+          </div>
+
+          <div class="section-heading" ref="benefitSection">
+            <div><span class="eyebrow">CURATED FOR YOU</span><h3>精选福利</h3><p>按企业福利场景快速浏览</p></div>
+            <div class="category-tabs">
+              <button v-for="(type,index) in types" :key="type.id" :class="{active:selectedType === type.id}" @click="selectType(type.id)">
+                <span>{{categoryEmoji(index)}}</span>{{type.name}}
+              </button>
+            </div>
+          </div>
+
+          <div class="benefit-grid">
+            <article class="benefit-card" v-for="(provider,index) in filteredProviders" :key="provider.id" @click="openProvider(provider)">
+              <div class="benefit-cover" :style="coverStyle(provider,index)">
+                <span class="benefit-badge">员工专享</span>
+                <span class="benefit-index">0{{index + 1}}</span>
+              </div>
+              <div class="benefit-body">
+                <div class="benefit-meta"><span>{{provider.area || '企业福利合作方'}}</span><span><i class="el-icon-time"></i> {{provider.openHours || '长期有效'}}</span></div>
+                <h4>{{provider.name}}</h4>
+                <p>{{provider.address || '企业员工专属权益，具体规则请进入详情查看。'}}</p>
+                <div class="benefit-footer"><span>查看可领福利</span><button><i class="el-icon-right"></i></button></div>
+              </div>
+            </article>
+            <div class="empty-state" v-if="!filteredProviders.length"><i class="el-icon-present"></i><h4>该分类福利正在准备中</h4><p>换一个分类看看，新的员工权益会持续上架。</p></div>
+          </div>
+        </section>
+
+        <section v-show="view === 'community' || view === 'following'" class="page-section community-layout">
+          <div class="feed-column">
+            <div class="community-banner">
+              <div><span class="eyebrow">INSIDE FUYOU</span><h3>{{view === 'following' ? '关注动态' : '员工广场'}}</h3><p>{{view === 'following' ? '只看你关注的同事最新分享' : '分享工作之外的好生活，也分享福利使用体验'}}</p></div>
+              <el-button type="primary" icon="el-icon-edit" @click="showComposer = true">发布动态</el-button>
+            </div>
+            <article class="post-card" v-for="post in filteredPosts" :key="post.id">
+              <div class="post-head">
+                <img v-if="post.icon" class="avatar avatar--post avatar-image" :src="post.icon" alt="发布人头像">
+                <span v-else class="avatar avatar--post">{{(post.name || '员').slice(0,1)}}</span>
+                <div><strong>{{post.name || '福优员工'}}</strong><small>{{formatDate(post.createTime)}} · 企业员工</small></div>
+                <button v-if="post.userId !== user.id" class="follow-button" @click="toggleFollow(post.userId)">+ 关注</button>
+              </div>
+              <h4>{{post.title}}</h4>
+              <p class="post-content">{{post.content}}</p>
+              <img class="post-image" v-if="post.images" :src="firstImage(post.images)" @error="imageFallback">
+              <div class="post-actions">
+                <button :class="{liked:post.isLike}" @click="toggleLike(post)"><i :class="post.isLike ? 'el-icon-star-on' : 'el-icon-star-off'"></i> {{post.liked || 0}}</button>
+                <span><i class="el-icon-chat-line-round"></i> 内部动态</span>
+                <button @click="copyPostLink(post)"><i class="el-icon-link"></i> 分享</button>
+              </div>
+            </article>
+            <div class="empty-state" v-if="!filteredPosts.length"><i class="el-icon-chat-dot-round"></i><h4>还没有动态</h4><p>发布第一条动态，或先关注几位同事。</p></div>
+          </div>
+          <aside class="community-side">
+            <div class="side-widget"><span class="eyebrow">COMMUNITY</span><h4>社区公约</h4><ul><li>真实友善，尊重每位同事</li><li>分享福利体验与生活灵感</li><li>请勿发布企业敏感信息</li></ul></div>
+            <div class="side-widget tech-widget"><span>稳定运行中</span><strong>Feed 时间线</strong><p>关注关系写入后，新动态按时间推送至粉丝收件箱。</p></div>
+          </aside>
+        </section>
+
+        <section v-show="view === 'orders'" class="page-section">
+          <div class="section-heading section-heading--simple"><div><span class="eyebrow">MY BENEFITS</span><h3>我的福利</h3><p>查看已经成功落库的福利订单</p></div><el-button icon="el-icon-refresh" @click="loadOrders">刷新状态</el-button></div>
+          <div class="orders-panel">
+            <div class="order-row order-row--head"><span>福利订单</span><span>提交时间</span><span>状态</span><span>操作</span></div>
+            <div class="order-row" v-for="order in orders" :key="order.orderId">
+              <div><span class="order-icon"><i class="el-icon-present"></i></span><span><strong>{{order.voucherTitle}}</strong><small># {{order.orderId}}</small></span></div>
+              <span>{{formatDate(order.createTime)}}</span>
+              <span><em class="status-dot"></em> 已受理</span>
+              <button class="link-button" @click="checkOrder(order.orderId)">查看状态</button>
+            </div>
+            <div class="empty-state" v-if="!orders.length"><i class="el-icon-tickets"></i><h4>暂无福利订单</h4><p>去福利中心看看正在开放的员工权益。</p><el-button type="primary" @click="navigate('benefits')">浏览福利</el-button></div>
+          </div>
+        </section>
+
+        <section v-show="view === 'profile'" class="page-section profile-grid">
+          <div class="profile-card">
+            <div class="profile-cover"></div>
+            <img v-if="user.icon" class="avatar avatar--large avatar-image" :src="user.icon" alt="员工头像">
+            <span v-else class="avatar avatar--large">{{avatarText}}</span>
+            <h3>{{user.nickName || '福优员工'}}</h3><p>福优选认证员工</p>
+            <div class="profile-tags"><span>企业成员</span><span>福利体验官</span></div>
+            <button class="secondary-action" @click="logout">退出当前账号</button>
+          </div>
+          <div class="profile-main">
+            <div class="section-heading section-heading--simple"><div><span class="eyebrow">MY POSTS</span><h3>我的动态</h3><p>记录你在福优选社区的分享</p></div><el-button type="primary" icon="el-icon-edit" @click="showComposer = true">发布动态</el-button></div>
+            <article class="my-post" v-for="post in myPosts" :key="post.id"><div><small>{{formatDate(post.createTime)}}</small><h4>{{post.title}}</h4><p>{{post.content}}</p></div><span><i class="el-icon-star-off"></i> {{post.liked || 0}}</span></article>
+            <div class="empty-state" v-if="!myPosts.length"><i class="el-icon-edit-outline"></i><h4>还没有发布动态</h4><p>和同事分享一条福利体验吧。</p></div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <nav class="mobile-nav">
+      <button v-for="item in navItems.slice(0,5)" :key="item.key" :class="{active:view === item.key}" @click="navigate(item.key)"><i :class="item.icon"></i><span>{{item.shortLabel || item.label}}</span></button>
+    </nav>
+  </div>
+
+  <el-dialog title="福利详情" :visible.sync="providerDialog" width="760px" custom-class="benefit-dialog">
+    <div v-if="selectedProvider" class="dialog-provider">
+      <div class="dialog-provider__cover" :style="coverStyle(selectedProvider, selectedProvider.id || 0)"><span>企业签约福利</span></div>
+      <div><span class="eyebrow">BENEFIT PROVIDER</span><h2>{{selectedProvider.name}}</h2><p>{{selectedProvider.address || '企业内部福利合作方'}}</p><small><i class="el-icon-time"></i> {{selectedProvider.openHours || '以福利活动时间为准'}}</small></div>
+    </div>
+    <div class="voucher-list">
+      <div class="voucher-item" v-for="voucher in vouchers" :key="voucher.id">
+        <div><span class="voucher-label">限时福利</span><h4>{{voucher.title}}</h4><p>{{voucher.subTitle}}</p><strong>¥ {{formatMoney(voucher.payValue)}} <del>¥ {{formatMoney(voucher.actualValue)}}</del></strong></div>
+        <div class="voucher-action"><span>剩余 {{voucher.stock == null ? '--' : voucher.stock}} 份</span><small>{{formatActivity(voucher)}}</small><el-button type="primary" :disabled="!canSeckill(voucher)" @click="seckill(voucher)">{{voucher.stock < 1 ? '已抢完' : '立即抢购'}}</el-button></div>
+      </div>
+      <div class="empty-state compact" v-if="!vouchers.length"><i class="el-icon-box"></i><h4>暂无开放福利</h4><p>新的企业权益正在配置中。</p></div>
+    </div>
+  </el-dialog>
+
+  <el-dialog title="发布员工动态" :visible.sync="showComposer" width="620px" custom-class="composer-dialog">
+    <el-form label-position="top">
+      <el-form-item label="标题"><el-input v-model.trim="composer.title" maxlength="40" show-word-limit placeholder="给这条动态起个标题"></el-input></el-form-item>
+      <el-form-item label="内容"><el-input type="textarea" :rows="6" v-model.trim="composer.content" maxlength="500" show-word-limit placeholder="分享福利体验、团队故事或生活灵感…"></el-input></el-form-item>
+      <el-form-item label="封面图片地址（可选）"><el-input v-model.trim="composer.images" placeholder="不填写将使用默认企业社区封面"></el-input></el-form-item>
+    </el-form>
+    <span slot="footer"><el-button @click="showComposer = false">取消</el-button><el-button type="primary" :loading="publishing" @click="publishPost">发布动态</el-button></span>
+  </el-dialog>
+</div>
+
+<script src="./vendor/vue.js"></script>
+<script src="./vendor/axios.min.js"></script>
+<script src="./vendor/element.js"></script>
+<script src="./js/app.js?v=20261009"></script>
+</body>
+</html>

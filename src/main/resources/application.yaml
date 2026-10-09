@@ -1,29 +1,56 @@
 server:
-  port: 8081
+  port: ${SERVER_PORT:8081}
+  tomcat:
+    threads:
+      max: 500
+    accept-count: 3000
+    max-connections: 10000
 spring:
   application:
-    name: hmdp
+    name: fuyouxuan
   datasource:
-    driver-class-name: com.mysql.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC
-    username: root
-    password: 123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/fuyouxuan?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8}
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:}
   redis:
-    host: 192.168.150.101
-    port: 6379
-    password: 123321
+    timeout: 3s
+    sentinel:
+      master: ${REDIS_SENTINEL_MASTER:mymaster}
+      nodes: ${REDIS_SENTINEL_NODES:127.0.0.1:26379,127.0.0.1:26380,127.0.0.1:26381}
     lettuce:
       pool:
-        max-active: 10
-        max-idle: 10
-        min-idle: 1
+        max-active: 1000
+        max-idle: 200
+        min-idle: 50
         time-between-eviction-runs: 10s
   jackson:
-    default-property-inclusion: non_null # JSON处理时忽略非空字段
+    default-property-inclusion: non_null
 mybatis-plus:
-  type-aliases-package: com.hmdp.entity # 别名扫描包
+  type-aliases-package: com.fuyouxuan.entity
+rocketmq:
+  name-server: ${ROCKETMQ_NAME_SERVER:127.0.0.1:9876}
+  producer:
+    group: seckill-producer-group
+canal:
+  mode: ${CANAL_MODE:simple}
+  destination: ${CANAL_DESTINATION:example}
+  server: ${CANAL_SERVER:127.0.0.1:11111}
+redisson:
+  lock-watchdog-timeout: ${REDISSON_LOCK_WATCHDOG_TIMEOUT:30000}
+demo:
+  enabled: ${DEMO_ENABLED:true}
 logging:
   level:
-    com.hmdp: debug
+    root: warn
+    com.fuyouxuan: warn
+    com.fuyouxuan.mapper: warn
+    com.baomidou.mybatisplus: warn
+    org.mybatis: warn
+    org.apache.ibatis: warn
+    org.apache.rocketmq.remoting: warn
+    org.apache.rocketmq.client: warn
+    top.javatool.canal: warn
+    com.alibaba.otter: warn
   pattern:
     dateformat: mm:ss.SSS

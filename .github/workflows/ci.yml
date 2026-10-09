@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "8"
+          cache: maven
+
+      - name: Run unit tests
+        run: mvn --batch-mode verify
+
+      - name: Validate Compose configuration
+        run: docker compose --env-file .env.example config --quiet
+
+      - name: Build application and web images
+        run: docker compose --env-file .env.example build app-1 nginx

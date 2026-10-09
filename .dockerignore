@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.vscode
+target
+runtime
+*.log
+.env
+docs
+scripts
+deploy
+nginx
+redis-sentinel
+postman
+.postman

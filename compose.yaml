@@ -1,0 +1,338 @@
+name: fuyouxuan
+
+x-app-environment: &app-environment
+  SERVER_PORT: "8080"
+  MYSQL_URL: jdbc:mysql://mysql:3306/fuyouxuan?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+  MYSQL_USERNAME: fuyouxuan_app
+  MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?Run the docker-up script to create .env}
+  REDIS_SENTINEL_MASTER: mymaster
+  REDIS_SENTINEL_NODES: redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379
+  ROCKETMQ_NAME_SERVER: rocketmq-namesrv:9876
+  CANAL_SERVER: canal:11111
+  CANAL_DESTINATION: example
+  DEMO_ENABLED: "true"
+  FUYOUXUAN_IMAGE_DIR: /data/uploads
+  LOGGING_LEVEL_COM_FUYOUXUAN: INFO
+  TZ: Asia/Shanghai
+
+services:
+  mysql:
+    image: mysql:8.0.40
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Run the docker-up script to create .env}
+      MYSQL_DATABASE: fuyouxuan
+      MYSQL_USER: fuyouxuan_app
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?Run the docker-up script to create .env}
+      CANAL_DB_PASSWORD: ${CANAL_DB_PASSWORD:?Run the docker-up script to create .env}
+      TZ: Asia/Shanghai
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --binlog-row-image=FULL
+      - --expire-logs-days=7
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init/01-create-canal-user.sh:/docker-entrypoint-initdb.d/01-create-canal-user.sh:ro
+      - ./src/main/resources/db/fuyouxuan-demo.sql:/docker-entrypoint-initdb.d/02-fuyouxuan-demo.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [backend]
+
+  redis-master:
+    image: redis:7.2.7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./docker/redis/master.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis-master-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+  redis-replica:
+    image: redis:7.2.7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./docker/redis/replica.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis-replica-data:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+  redis-sentinel-1:
+    image: redis:7.2.7-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "cp /config/sentinel.conf /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf"]
+    volumes:
+      - ./docker/redis/sentinel.conf:/config/sentinel.conf:ro
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    healthcheck: &sentinel-healthcheck
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+  redis-sentinel-2:
+    image: redis:7.2.7-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "cp /config/sentinel.conf /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf"]
+    volumes:
+      - ./docker/redis/sentinel.conf:/config/sentinel.conf:ro
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    healthcheck: *sentinel-healthcheck
+    networks: [backend]
+
+  redis-sentinel-3:
+    image: redis:7.2.7-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "cp /config/sentinel.conf /tmp/sentinel.conf && exec redis-sentinel /tmp/sentinel.conf"]
+    volumes:
+      - ./docker/redis/sentinel.conf:/config/sentinel.conf:ro
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    healthcheck: *sentinel-healthcheck
+    networks: [backend]
+
+  rocketmq-namesrv:
+    image: apache/rocketmq:4.9.7
+    restart: unless-stopped
+    command: sh mqnamesrv
+    environment:
+      JAVA_OPT_EXT: -XX:-UseContainerSupport -Xms128m -Xmx128m -Xmn64m
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9876'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    networks: [backend]
+
+  rocketmq-store-init:
+    image: alpine:3.20
+    command: ["sh", "-c", "mkdir -p /master /slave && chown -R 3000:3000 /master /slave"]
+    volumes:
+      - rocketmq-master-data:/master
+      - rocketmq-slave-data:/slave
+    restart: "no"
+    networks: [backend]
+
+  rocketmq-master:
+    image: apache/rocketmq:4.9.7
+    restart: unless-stopped
+    command: sh mqbroker -c /home/rocketmq/broker.conf
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+      JAVA_OPT_EXT: -XX:-UseContainerSupport -Xms384m -Xmx384m -Xmn128m
+    volumes:
+      - ./docker/rocketmq/broker-master.conf:/home/rocketmq/broker.conf:ro
+      - rocketmq-master-data:/home/rocketmq/store
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_healthy
+      rocketmq-store-init:
+        condition: service_completed_successfully
+    healthcheck: &broker-healthcheck
+      test: ["CMD-SHELL", "sh /home/rocketmq/rocketmq-4.9.7/bin/mqadmin clusterList -n rocketmq-namesrv:9876 2>/dev/null | grep -q FuYouXuanCluster"]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 30s
+    networks: [backend]
+
+  rocketmq-slave:
+    image: apache/rocketmq:4.9.7
+    restart: unless-stopped
+    command: sh mqbroker -c /home/rocketmq/broker.conf
+    environment:
+      NAMESRV_ADDR: rocketmq-namesrv:9876
+      JAVA_OPT_EXT: -XX:-UseContainerSupport -Xms384m -Xmx384m -Xmn128m
+    volumes:
+      - ./docker/rocketmq/broker-slave.conf:/home/rocketmq/broker.conf:ro
+      - rocketmq-slave-data:/home/rocketmq/store
+    depends_on:
+      rocketmq-master:
+        condition: service_healthy
+      rocketmq-store-init:
+        condition: service_completed_successfully
+    healthcheck: *broker-healthcheck
+    networks: [backend]
+
+  rocketmq-topic-init:
+    image: apache/rocketmq:4.9.7
+    command:
+      - sh
+      - mqadmin
+      - updateTopic
+      - -n
+      - rocketmq-namesrv:9876
+      - -c
+      - FuYouXuanCluster
+      - -t
+      - seckill-order-topic
+      - -r
+      - "16"
+      - -w
+      - "16"
+    depends_on:
+      rocketmq-master:
+        condition: service_healthy
+      rocketmq-slave:
+        condition: service_healthy
+    restart: "no"
+    networks: [backend]
+
+  canal:
+    image: canal/canal-server:v1.1.7
+    restart: unless-stopped
+    environment:
+      canal.auto.scan: "false"
+      canal.destinations: example
+      canal.instance.master.address: mysql:3306
+      canal.instance.dbUsername: canal
+      canal.instance.dbPassword: ${CANAL_DB_PASSWORD:?Run the docker-up script to create .env}
+      canal.instance.connectionCharset: UTF-8
+      canal.instance.filter.regex: "fuyouxuan\\..*"
+      canal.instance.mysql.slaveId: "1234"
+      canal.instance.tsdb.enable: "true"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/11111'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+    networks: [backend]
+
+  uploads-init:
+    image: alpine:3.20
+    command: ["sh", "-c", "mkdir -p /data/uploads && chown -R 10001:10001 /data/uploads && chmod -R 755 /data/uploads"]
+    volumes:
+      - uploads-data:/data/uploads
+    restart: "no"
+    networks: [backend]
+
+  app-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fuyouxuan-app:local
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      CANAL_MODE: simple
+      INSTANCE_NAME: app-1
+    volumes:
+      - uploads-data:/data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis-sentinel-1:
+        condition: service_healthy
+      redis-sentinel-2:
+        condition: service_healthy
+      redis-sentinel-3:
+        condition: service_healthy
+      rocketmq-master:
+        condition: service_healthy
+      rocketmq-slave:
+        condition: service_healthy
+      rocketmq-topic-init:
+        condition: service_completed_successfully
+      canal:
+        condition: service_healthy
+      uploads-init:
+        condition: service_completed_successfully
+    healthcheck: &app-healthcheck
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/shop-type/list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [backend]
+
+  app-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fuyouxuan-app:local
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      CANAL_MODE: disabled
+      INSTANCE_NAME: app-2
+    volumes:
+      - uploads-data:/data/uploads
+    depends_on:
+      app-1:
+        condition: service_healthy
+      uploads-init:
+        condition: service_completed_successfully
+    healthcheck: *app-healthcheck
+    networks: [backend]
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    image: fuyouxuan-web:local
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - uploads-data:/usr/share/nginx/html/assets/uploads:ro
+    depends_on:
+      app-1:
+        condition: service_healthy
+      app-2:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-master-data:
+  redis-replica-data:
+  rocketmq-master-data:
+  rocketmq-slave-data:
+  uploads-data:
