@@ -1,6 +1,27 @@
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectRoot
+$keeperPidFile = Join-Path (Join-Path $ProjectRoot "runtime") "wsl-keeper.pid"
+
+function Stop-FuYouXuanWslKeeper {
+    if (-not (Test-Path -LiteralPath $keeperPidFile)) {
+        return
+    }
+
+    try {
+        $keeperProcessId = [int](Get-Content -Raw -LiteralPath $keeperPidFile).Trim()
+        $keeperProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $keeperProcessId" -ErrorAction SilentlyContinue
+        if ($null -ne $keeperProcess -and
+            $keeperProcess.Name -eq "wsl.exe" -and
+            $keeperProcess.CommandLine -like "*sleep 2147483647*") {
+            Stop-Process -Id $keeperProcessId -Force
+        }
+    } catch {
+        Write-Warning "Could not stop the WSL2 keepalive process: $($_.Exception.Message)"
+    } finally {
+        Remove-Item -LiteralPath $keeperPidFile -Force -ErrorAction SilentlyContinue
+    }
+}
 
 if (Get-Command docker -ErrorAction SilentlyContinue) {
     docker compose down
@@ -12,5 +33,7 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
 } else {
     throw "Docker was not found."
 }
+
+Stop-FuYouXuanWslKeeper
 
 Write-Host "Containers stopped. Named volumes and demo data were preserved."

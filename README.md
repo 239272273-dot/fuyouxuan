@@ -22,6 +22,8 @@ Windows PowerShell：
 powershell -ExecutionPolicy Bypass -File .\scripts\docker-up.ps1
 ```
 
+如果 Docker Engine 安装在 WSL2 中，请使用“以管理员身份运行”的 PowerShell。脚本会在项目运行期间保持 WSL2 在线，并在必要时自动修复 `localhost` 转发。
+
 Linux、WSL2 或 macOS：
 
 ```bash
