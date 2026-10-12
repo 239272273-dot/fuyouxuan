@@ -14,7 +14,26 @@
 
 ## 一键启动
 
-需要 Docker Desktop，或已安装 Docker Engine 与 Docker Compose 的 Linux/WSL2。首次启动需要下载镜像和构建后端，建议为 Docker 分配至少 8 GB 内存。
+### 运行前准备
+
+一键启动脚本会下载并配置 MySQL、Redis、RocketMQ、Canal、Nginx 和后端镜像，但**不会自动安装 Docker 本身**。运行项目之前，电脑必须先具备 Docker Engine 和 Docker Compose。
+
+- Windows / macOS：推荐安装并启动 Docker Desktop。
+- Windows + WSL2：也可以在 WSL2 的 Linux 发行版中安装 Docker Engine 和 Compose 插件。
+- Linux：安装 Docker Engine 和 Compose 插件，并确保当前用户有执行 Docker 命令的权限。
+
+安装完成后，新开一个终端并执行以下命令；两条命令都能正常显示版本号，才可以继续启动项目：
+
+```bash
+docker --version
+docker compose version
+```
+
+如果电脑不能安装 Docker，就无法使用本仓库的一键启动方式。理论上可以手动安装并配置 Java 8、Maven、MySQL 8、Redis 7、RocketMQ 4.9、Canal 1.1 和 Nginx，但还需要自行完成账号、端口、网络及初始化配置，不建议用于首次体验。
+
+首次启动需要联网下载镜像和构建后端，建议为 Docker 分配至少 8 GB 内存。
+
+### 启动项目
 
 Windows PowerShell：
 
@@ -35,6 +54,8 @@ bash scripts/docker-up.sh
 <http://localhost:8080>
 
 输入任意合法的 11 位手机号，点击“获取验证码”。演示模式会在页面上显示验证码，输入后即可登录；不需要管理员账号。
+
+> 同一台电脑默认只运行一份福优选。若已经从另一个目录启动过本项目，再启动第二份同名副本会复用已有容器和数据卷，可能因为两份 `.env` 的随机密码不同而启动失败。首次体验请直接使用一份项目；需要并行运行时，应为第二份配置不同的 `COMPOSE_PROJECT_NAME` 和 `HTTP_PORT`。
 
 ## 停止与重启
 
