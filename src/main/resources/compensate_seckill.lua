@@ -1,17 +1,20 @@
--- 补偿脚本：幂等恢复Redis库存 + 清除下单标记
--- 参数：voucherId, userId, orderId（可选）
+-- 补偿脚本：只补偿当前订单，防止旧的重复消息误删用户的新订单
+-- 参数：voucherId, userId, orderId, finalState（可选，默认FAILED）
 local voucherId = ARGV[1]
 local userId = ARGV[2]
 local orderId = ARGV[3]
+local finalState = ARGV[4] or 'FAILED'
 local stockKey = 'seckill:stock:' .. voucherId
 local orderKey = 'seckill:order:' .. voucherId
 
--- 只有真正下过单（SET里存在）才恢复库存，防止重复补偿导致库存虚增
-local removed = redis.call('srem', orderKey, userId)
-if removed == 1 then
+local currentOrderId = redis.call('hget', orderKey, userId)
+local removed = 0
+if currentOrderId == orderId then
+    redis.call('hdel', orderKey, userId)
     redis.call('incrby', stockKey, 1)
+    removed = 1
 end
 if orderId and string.len(orderId) > 0 then
-    redis.call('set', 'seckill:order:status:' .. orderId, 'FAILED', 'EX', 86400)
+    redis.call('set', 'seckill:order:status:' .. orderId, finalState, 'EX', 86400)
 end
 return removed

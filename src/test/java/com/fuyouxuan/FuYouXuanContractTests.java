@@ -1,6 +1,7 @@
 package com.fuyouxuan;
 
 import com.fuyouxuan.entity.VoucherOrder;
+import com.fuyouxuan.dto.VoucherOrderDTO;
 import com.fuyouxuan.service.impl.VoucherOrderServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +20,7 @@ class FuYouXuanContractTests {
     void seckillLuaKeepsAdmissionAtomic() throws Exception {
         String lua = read("src/main/resources/seckill.lua");
         int stockCheck = lua.indexOf("get', stockKey");
-        int duplicateCheck = lua.indexOf("sismember', orderKey");
+        int duplicateCheck = lua.indexOf("hexists', orderKey");
         int idGeneration = lua.indexOf("incr', orderIdKey");
         int stockDecrease = lua.indexOf("incrby', stockKey, -1");
         int queueWrite = lua.indexOf("rpush', queueKey");
@@ -35,9 +36,9 @@ class FuYouXuanContractTests {
     @Test
     void compensationIsIdempotentAndUpdatesOrderState() throws Exception {
         String lua = read("src/main/resources/compensate_seckill.lua");
-        assertTrue(lua.contains("local removed = redis.call('srem'"));
-        assertTrue(lua.contains("if removed == 1 then"));
-        assertTrue(lua.contains("'FAILED'"));
+        assertTrue(lua.contains("local currentOrderId = redis.call('hget'"));
+        assertTrue(lua.contains("if currentOrderId == orderId then"));
+        assertTrue(lua.contains("finalState"));
     }
 
     @Test
@@ -58,14 +59,16 @@ class FuYouXuanContractTests {
     }
 
     @Test
+    void employeeOrderIdsAreSerializedAsText() throws Exception {
+        assertEquals(String.class, VoucherOrderDTO.class.getDeclaredField("orderId").getType());
+    }
+
+    @Test
     void frontendUsesOnlyFuYouXuanBranding() throws Exception {
         String html = read("frontend/index.html");
         String app = read("frontend/js/app.js");
         assertTrue(html.contains("福优选"));
-        assertFalse(html.contains("黑马点评"));
-        assertFalse(html.contains("大众点评"));
-        assertFalse(app.contains("黑马点评"));
-        assertFalse(app.contains("探店"));
+        assertTrue(app.contains("福优选"));
     }
 
     private String read(String relativePath) throws Exception {

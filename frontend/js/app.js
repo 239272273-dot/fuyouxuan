@@ -17,10 +17,15 @@
     }
     return payload.data;
   }, function (error) {
-    if (error.response && error.response.status === 401) {
+    const status = (error.response && error.response.status) || (error.request && error.request.status);
+    if (status === 401) {
       localStorage.removeItem(TOKEN_KEY);
       window.dispatchEvent(new Event('fuyouxuan-unauthorized'));
       return Promise.reject(new Error('登录已过期，请重新登录'));
+    }
+    if (status === 429) {
+      const message = error.response && error.response.data && error.response.data.errorMsg;
+      return Promise.reject(new Error(message || '操作太频繁，请稍后再试'));
     }
     return Promise.reject(new Error(error.message === 'Network Error' ? '服务暂时不可用，请检查后端是否启动' : error.message));
   });
@@ -57,8 +62,15 @@
         posts: [],
         myPosts: [],
         orders: [],
+        paymentDialog: false,
+        paymentOrder: null,
+        paymentSeconds: 0,
+        paymentTimer: null,
+        paying: false,
+        cancelling: false,
         showComposer: false,
-        composer: { title: '', content: '', images: '' },
+        composer: { title: '', content: '' },
+        composerFiles: [],
         categoryNames: ['节日关怀', '餐饮补贴', '健康生活', '学习成长', '通勤出行', '家庭关爱', '团队活动', '数码优选', '文化娱乐', '弹性福利'],
         benefitCovers: [
           './assets/benefits/festival.svg', './assets/benefits/meal.svg',
@@ -74,6 +86,14 @@
       pageTitle: function () {
         const titles = { benefits: '员工福利中心', community: '员工广场', following: '关注动态', orders: '我的福利', profile: '个人中心' };
         return titles[this.view] || '福优选';
+      },
+      uploadHeaders: function () {
+        return { authorization: storedToken() };
+      },
+      paymentCountdownText: function () {
+        const seconds = Math.max(0, this.paymentSeconds || 0);
+        const minutes = Math.floor(seconds / 60);
+        return String(minutes).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
       },
       avatarText: function () {
         return (this.user.nickName || '福').slice(0, 1);
@@ -102,6 +122,7 @@
     beforeDestroy: function () {
       window.removeEventListener('hashchange', this.syncRoute);
       if (this.timer) clearInterval(this.timer);
+      this.stopPaymentTimer();
     },
     methods: {
       notifyError: function (error) {
@@ -223,9 +244,12 @@
         setTimeout(async function () {
           try {
             const result = await http.get('/voucher-order/' + orderId + '/status');
-            if (result.status === 'SUCCESS') {
-              vm.$message.success('福利订单创建成功');
+            if (result.status === 'UNPAID') {
+              vm.$message.success('抢购成功，请在 5 分钟内完成付款');
               await vm.loadOrders();
+              vm.openPayment(result);
+            } else if (result.status === 'PAID') {
+              vm.$message.success('订单已经付款');
             } else if (result.status === 'FAILED') {
               vm.$message.error('订单处理失败，库存资格已自动恢复');
             } else {
@@ -237,10 +261,78 @@
       loadOrders: async function () {
         this.orders = await http.get('/voucher-order/of/me') || [];
       },
+      openOrderPayment: function (order) {
+        this.openPayment(order);
+      },
+      openPayment: function (order) {
+        this.paymentOrder = Object.assign({}, order);
+        this.paymentDialog = true;
+        this.stopPaymentTimer();
+        const expiresAt = order.expiresAt ? new Date(order.expiresAt).getTime() : Date.now() + 5 * 60 * 1000;
+        const update = () => {
+          this.paymentSeconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+          if (this.paymentSeconds <= 0) {
+            this.stopPaymentTimer();
+            if (this.paymentOrder) this.waitForPaymentClose(this.paymentOrder.orderId, 0);
+          }
+        };
+        update();
+        if (this.paymentSeconds > 0) this.paymentTimer = setInterval(update, 1000);
+      },
+      stopPaymentTimer: function () {
+        if (this.paymentTimer) clearInterval(this.paymentTimer);
+        this.paymentTimer = null;
+      },
+      waitForPaymentClose: async function (orderId, attempt) {
+        if (!this.paymentDialog || !this.paymentOrder || this.paymentOrder.orderId !== orderId) return;
+        try {
+          const result = await http.get('/voucher-order/' + orderId + '/status');
+          if (result.status === 'CANCELLED' || result.status === 'FAILED' || result.status === 'UNKNOWN') {
+            this.paymentDialog = false;
+            await this.loadOrders();
+            this.$message.info('订单已超时取消，库存和抢购资格已恢复');
+            return;
+          }
+          if (result.status === 'PAID') {
+            this.paymentDialog = false;
+            const refreshed = await Promise.all([this.loadOrders(), http.get('/user/me')]);
+            this.user = refreshed[1] || this.user;
+            return;
+          }
+        } catch (error) {
+          if (attempt >= 10) this.notifyError(error);
+        }
+        if (attempt < 10) {
+          setTimeout(() => this.waitForPaymentClose(orderId, attempt + 1), 1000);
+        }
+      },
+      payCurrentOrder: async function () {
+        if (!this.paymentOrder || this.paymentSeconds <= 0) return;
+        this.paying = true;
+        try {
+          const result = await http.post('/voucher-order/' + this.paymentOrder.orderId + '/pay');
+          this.user.credits = result.credits;
+          this.paymentDialog = false;
+          this.$message.success(result.alreadyPaid ? '订单已经支付，无需重复扣豆' : '支付成功');
+          await this.loadOrders();
+        } catch (error) { this.notifyError(error); }
+        finally { this.paying = false; }
+      },
+      cancelPaymentOrder: async function () {
+        if (!this.paymentOrder) return;
+        this.cancelling = true;
+        try {
+          await http.post('/voucher-order/' + this.paymentOrder.orderId + '/cancel');
+          this.paymentDialog = false;
+          this.$message.success('订单已取消，库存和抢购资格已恢复');
+          await this.loadOrders();
+        } catch (error) { this.notifyError(error); }
+        finally { this.cancelling = false; }
+      },
       checkOrder: async function (orderId) {
         try {
           const result = await http.get('/voucher-order/' + orderId + '/status');
-          const labels = { SUCCESS: '订单已成功落库', PENDING: '订单正在异步处理', FAILED: '订单处理失败，资格已恢复', UNKNOWN: '暂未找到订单状态' };
+          const labels = { UNPAID: '订单待付款', PAID: '订单已付款', PENDING: '订单正在异步处理', FAILED: '订单处理失败，资格已恢复', CANCELLED: '订单已取消', UNKNOWN: '暂未找到订单状态' };
           this.$message.info(labels[result.status] || result.status);
         } catch (error) { this.notifyError(error); }
       },
@@ -268,18 +360,85 @@
           this.$message.success(followed ? '已取消关注' : '关注成功，新动态会进入关注流');
         } catch (error) { this.notifyError(error); }
       },
+      deletePost: async function (post) {
+        try {
+          await this.$confirm('删除后无法恢复，确定删除这条动态吗？', '删除动态', {
+            confirmButtonText: '确定删除',
+            cancelButtonText: '取消',
+            type: 'warning'
+          });
+        } catch (ignored) {
+          return;
+        }
+        try {
+          await http.delete('/blog/' + post.id);
+          this.posts = this.posts.filter(item => item.id !== post.id);
+          this.myPosts = this.myPosts.filter(item => item.id !== post.id);
+          this.$message.success('动态已删除');
+        } catch (error) {
+          this.notifyError(error);
+        }
+      },
+      beforeImageUpload: function (file) {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (!allowedTypes.includes(file.type)) {
+          this.$message.warning('只能上传 JPG、PNG、WebP 或 GIF 图片');
+          return false;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          this.$message.warning('单张图片不能超过 5 MB');
+          return false;
+        }
+        return true;
+      },
+      handleImageUploadSuccess: function (response, file, fileList) {
+        if (!response || response.success !== true || !response.data) {
+          this.$message.error((response && response.errorMsg) || '图片上传失败');
+          this.composerFiles = fileList.filter(item => item.uid !== file.uid);
+          return;
+        }
+        file.serverPath = response.data;
+        file.url = '/assets/uploads' + response.data;
+        this.composerFiles = fileList.slice();
+      },
+      handleImageUploadError: function (error, file, fileList) {
+        this.composerFiles = fileList.filter(item => item.uid !== file.uid);
+        this.$message.error('图片上传失败，请稍后重试');
+      },
+      handleImageRemove: async function (file, fileList) {
+        this.composerFiles = fileList.slice();
+        const serverPath = file.serverPath || (file.response && file.response.data);
+        if (!serverPath) return;
+        try {
+          await http.get('/upload/blog/delete', { params: { name: serverPath } });
+        } catch (error) {
+          this.notifyError(error);
+        }
+      },
+      handleImageExceed: function () {
+        this.$message.warning('一条动态最多上传 9 张图片');
+      },
       publishPost: async function () {
         if (!this.composer.title || !this.composer.content) return this.$message.warning('请填写标题和内容');
+        if (this.composerFiles.some(file => file.status === 'ready' || file.status === 'uploading')) {
+          return this.$message.warning('图片还在上传，请稍等');
+        }
+        const images = this.composerFiles.map(function (file) {
+          const serverPath = file.serverPath || (file.response && file.response.data);
+          return serverPath ? '/assets/uploads' + serverPath : '';
+        }).filter(Boolean);
         this.publishing = true;
         try {
           await http.post('/blog', {
             shopId: 1,
             title: this.composer.title,
             content: this.composer.content,
-            images: this.composer.images || '/assets/benefits/community.svg'
+            images: images.join(',') || '/assets/benefits/community.svg'
           });
           this.showComposer = false;
-          this.composer = { title: '', content: '', images: '' };
+          this.composer = { title: '', content: '' };
+          this.composerFiles = [];
+          if (this.$refs.composerUpload) this.$refs.composerUpload.clearFiles();
           this.$message.success('动态已发布，并推送给关注你的同事');
           this.navigate('community');
           await this.loadHotPosts();
@@ -300,6 +459,7 @@
       },
       firstImage: function (images) { return (images || '').split(',')[0] || './assets/benefits/community.svg'; },
       imageFallback: function (event) { event.target.src = './assets/benefits/community.svg'; },
+      creditPrice: function (cents) { return Math.ceil((Number(cents) || 0) / 100); },
       formatMoney: function (cents) { return ((Number(cents) || 0) / 100).toFixed(2); },
       formatDate: function (value) {
         if (!value) return '刚刚';

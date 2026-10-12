@@ -77,7 +77,8 @@ public class SeckillDlqConsumer {
                                 Collections.emptyList(),
                                 message.getVoucherId().toString(),
                                 message.getUserId().toString(),
-                                message.getOrderId().toString());
+                                message.getOrderId().toString(),
+                                "FAILED");
 
                         // TODO: 接入告警（钉钉/邮件/企业微信）
                         log.error("已补偿Redis，需人工排查MySQL, orderId={}", message.getOrderId());

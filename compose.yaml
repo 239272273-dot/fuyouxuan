@@ -12,7 +12,7 @@ x-app-environment: &app-environment
   CANAL_DESTINATION: example
   DEMO_ENABLED: "true"
   FUYOUXUAN_IMAGE_DIR: /data/uploads
-  LOGGING_LEVEL_COM_FUYOUXUAN: INFO
+  LOGGING_LEVEL_COM_FUYOUXUAN: WARN
   TZ: Asia/Shanghai
 
 services:
@@ -206,18 +206,10 @@ services:
     image: apache/rocketmq:4.9.7
     command:
       - sh
-      - mqadmin
-      - updateTopic
-      - -n
-      - rocketmq-namesrv:9876
       - -c
-      - FuYouXuanCluster
-      - -t
-      - seckill-order-topic
-      - -r
-      - "16"
-      - -w
-      - "16"
+      - |
+        sh /home/rocketmq/rocketmq-4.9.7/bin/mqadmin updateTopic -n rocketmq-namesrv:9876 -c FuYouXuanCluster -t seckill-order-topic -r 16 -w 16
+        sh /home/rocketmq/rocketmq-4.9.7/bin/mqadmin updateTopic -n rocketmq-namesrv:9876 -c FuYouXuanCluster -t seckill-order-timeout-topic -r 8 -w 8
     depends_on:
       rocketmq-master:
         condition: service_healthy
@@ -268,6 +260,8 @@ services:
       <<: *app-environment
       CANAL_MODE: simple
       INSTANCE_NAME: app-1
+      SECKILL_DISPATCHER_ENABLED: "false"
+      SECKILL_CONSUMER_ENABLED: "false"
     volumes:
       - uploads-data:/data/uploads
     depends_on:
@@ -307,11 +301,47 @@ services:
       <<: *app-environment
       CANAL_MODE: disabled
       INSTANCE_NAME: app-2
+      SECKILL_DISPATCHER_ENABLED: "false"
+      SECKILL_CONSUMER_ENABLED: "false"
     volumes:
       - uploads-data:/data/uploads
     depends_on:
       app-1:
         condition: service_healthy
+      uploads-init:
+        condition: service_completed_successfully
+    healthcheck: *app-healthcheck
+    networks: [backend]
+
+  order-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fuyouxuan-app:local
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      CANAL_MODE: disabled
+      INSTANCE_NAME: order-worker
+      SECKILL_DISPATCHER_ENABLED: "true"
+      SECKILL_CONSUMER_ENABLED: "true"
+    volumes:
+      - uploads-data:/data/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis-sentinel-1:
+        condition: service_healthy
+      redis-sentinel-2:
+        condition: service_healthy
+      redis-sentinel-3:
+        condition: service_healthy
+      rocketmq-master:
+        condition: service_healthy
+      rocketmq-slave:
+        condition: service_healthy
+      rocketmq-topic-init:
+        condition: service_completed_successfully
       uploads-init:
         condition: service_completed_successfully
     healthcheck: *app-healthcheck

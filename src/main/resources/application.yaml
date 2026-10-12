@@ -8,6 +8,10 @@ server:
 spring:
   application:
     name: fuyouxuan
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: ${MYSQL_URL:jdbc:mysql://localhost:3306/fuyouxuan?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8}
@@ -38,6 +42,11 @@ canal:
   server: ${CANAL_SERVER:127.0.0.1:11111}
 redisson:
   lock-watchdog-timeout: ${REDISSON_LOCK_WATCHDOG_TIMEOUT:30000}
+seckill:
+  dispatcher:
+    enabled: ${SECKILL_DISPATCHER_ENABLED:true}
+  consumer:
+    enabled: ${SECKILL_CONSUMER_ENABLED:true}
 demo:
   enabled: ${DEMO_ENABLED:true}
 logging:

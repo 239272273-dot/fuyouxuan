@@ -39,4 +39,14 @@ public class VoucherOrderController {
     public Result queryOrderStatus(@PathVariable("id") Long orderId) {
         return voucherOrderService.queryOrderStatus(orderId);
     }
+
+    @PostMapping("/{id}/pay")
+    public Result payOrder(@PathVariable("id") Long orderId) {
+        return voucherOrderService.payOrder(orderId);
+    }
+
+    @PostMapping("/{id}/cancel")
+    public Result cancelOrder(@PathVariable("id") Long orderId) {
+        return voucherOrderService.cancelOrder(orderId);
+    }
 }

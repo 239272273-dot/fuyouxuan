@@ -39,6 +39,8 @@ public class SeckillOrderProducer {
     private static final Logger log = LoggerFactory.getLogger(SeckillOrderProducer.class);
 
     private static final String TOPIC = "seckill-order-topic";
+    private static final String TIMEOUT_TOPIC = "seckill-order-timeout-topic";
+    private static final int FIVE_MINUTE_DELAY_LEVEL = 9;
     private static final int PARTITIONS = 16;
     private static final int BATCH_SIZE = 50;
     private static final int MAX_SEND_RETRY = 3;
@@ -75,6 +77,13 @@ public class SeckillOrderProducer {
 
     @PostConstruct
     public void init() {
+        boolean dispatcherEnabled = env.getProperty("seckill.dispatcher.enabled", Boolean.class, true);
+        if (!dispatcherEnabled) {
+            log.info("Seckill Redis-to-RocketMQ dispatcher is disabled on instance={}",
+                    env.getProperty("INSTANCE_NAME", "unknown"));
+            return;
+        }
+
         String nameServer = env.getRequiredProperty("rocketmq.name-server");
         try {
             producer = new DefaultMQProducer("seckill-producer-group");
@@ -109,6 +118,9 @@ public class SeckillOrderProducer {
 
     @PreDestroy
     public void destroy() {
+        if (flushScheduler == null && producer == null) {
+            return;
+        }
         if (flushScheduler != null) {
             flushScheduler.shutdown();
             try {
@@ -126,7 +138,7 @@ public class SeckillOrderProducer {
         log.info("Seckill producer closed");
     }
 
-    public Long sendOrderMessage(Long voucherId, Long userId) {
+    public String sendOrderMessage(Long voucherId, Long userId) {
         LocalDateTime now = LocalDateTime.now();
         long timestamp = now.toEpochSecond(ZoneOffset.UTC) - BEGIN_TIMESTAMP;
         String date = now.format(ID_DATE_FORMATTER);
@@ -142,11 +154,28 @@ public class SeckillOrderProducer {
         );
 
         String scriptResult = Objects.requireNonNull(result, "seckill lua result is null");
-        if (scriptResult.startsWith("0:")) {
-            return Long.valueOf(scriptResult.substring(2));
+        if (!scriptResult.startsWith("0:")) {
+            log.debug("Seckill rejected, code={}, voucherId={}, userId={}", scriptResult, voucherId, userId);
         }
-        log.warn("Seckill rejected, code={}, voucherId={}, userId={}", scriptResult, voucherId, userId);
-        return null;
+        return scriptResult;
+    }
+
+    public void sendOrderTimeoutMessage(SeckillOrderMessage orderMessage) {
+        if (producer == null) {
+            throw new IllegalStateException("RocketMQ producer is not started");
+        }
+        byte[] body = JSONUtil.toJsonStr(orderMessage).getBytes(StandardCharsets.UTF_8);
+        Message message = new Message(TIMEOUT_TOPIC, body);
+        message.setKeys(String.valueOf(orderMessage.getOrderId()));
+        message.setDelayTimeLevel(FIVE_MINUTE_DELAY_LEVEL);
+        try {
+            SendResult result = producer.send(message);
+            if (result == null || !SendStatus.SEND_OK.equals(result.getSendStatus())) {
+                throw new IllegalStateException("延迟关单消息发送失败, result=" + result);
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("延迟关单消息发送失败, orderId=" + orderMessage.getOrderId(), e);
+        }
     }
 
     void flushPendingOrders(int partition) {

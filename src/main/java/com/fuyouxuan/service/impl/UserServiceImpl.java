@@ -11,6 +11,7 @@ import com.fuyouxuan.dto.UserDTO;
 import com.fuyouxuan.entity.User;
 import com.fuyouxuan.mapper.UserMapper;
 import com.fuyouxuan.service.IUserService;
+import com.fuyouxuan.service.IUserInfoService;
 import com.fuyouxuan.utils.RegexUtils;
 import com.fuyouxuan.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +42,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+
+    @Resource
+    private IUserInfoService userInfoService;
 
     @Value("${demo.enabled:true}")
     private boolean demoEnabled;
@@ -96,7 +100,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(),
                 CopyOptions.create()
                         .setIgnoreNullValue(true)
-                        .setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString()));
+                        .setFieldValueEditor((fieldName, fieldValue) ->
+                                fieldValue == null ? null : fieldValue.toString()));
         // 7.3.存储
         String tokenKey = LOGIN_USER_KEY + token;
         stringRedisTemplate.opsForHash().putAll(tokenKey, userMap);
@@ -124,6 +129,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         user.setNickName(USER_NICK_NAME_PREFIX + RandomUtil.randomString(10));
         // 2.保存用户
         save(user);
+        userInfoService.getOrCreateDefault(user.getId());
         return user;
     }
 

@@ -18,7 +18,7 @@ if (tonumber(redis.call('get', stockKey)) <= 0) then
     return '1'
 end
 
-if (redis.call('sismember', orderKey, userId) == 1) then
+if (redis.call('hexists', orderKey, userId) == 1) then
     return '2'
 end
 
@@ -36,7 +36,7 @@ local orderMessage = '{"orderId":' .. orderId ..
         ',"voucherId":' .. voucherId .. '}'
 
 redis.call('incrby', stockKey, -1)
-redis.call('sadd', orderKey, userId)
+redis.call('hset', orderKey, userId, orderId)
 redis.call('rpush', queueKey, orderMessage)
 redis.call('set', 'seckill:order:status:' .. orderId, 'PENDING', 'EX', 86400)
 

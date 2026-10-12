@@ -7,8 +7,8 @@
 - 企业员工登录、信息帖发布、点赞、关注和关注动态推送
 - 福利商品浏览、秒杀、异步下单和个人订单查询
 - Redis + Lua 原子完成库存校验、一人一单、扣减、分布式 ID 和订单入队
-- 16 个 Worker 分片拉取订单，批量投递 RocketMQ；包含 ACK、消费幂等、补偿和死信处理
-- Caffeine → Redis → MySQL 多级缓存，支持空值缓存、随机 TTL、逻辑过期和 Redisson Watchdog
+- 独立订单 Worker 使用 16 个分片任务批量投递 RocketMQ，与两个 Web 后端隔离；包含 ACK、消费幂等、补偿和死信处理
+- Caffeine → Redis → MySQL 多级缓存，支持空值缓存、随机 TTL 和 Redisson Watchdog
 - Canal 监听 MySQL ROW Binlog，使 Redis 与两个后端实例的本地缓存失效
 - Nginx 负载均衡两个后端，并缓存公开福利列表
 
@@ -69,6 +69,7 @@ docker compose logs -f nginx app-1 app-2
 | --- | ---: | --- |
 | Nginx + 前端 | 1 | 唯一对外入口，默认端口 `8080` |
 | Spring Boot | 2 | 内嵌 Tomcat，由 Nginx 负载均衡 |
+| 订单 Worker | 1 | 独立执行 Redis 队列投递和 RocketMQ 消费落库 |
 | MySQL | 1 | 主库，开启 ROW Binlog |
 | Redis | 2 | 一主一从 |
 | Redis Sentinel | 3 | 监控 `mymaster` 并提供主节点发现 |

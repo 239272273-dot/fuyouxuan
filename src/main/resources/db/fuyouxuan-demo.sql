@@ -35,7 +35,7 @@ CREATE TABLE tb_user_info (
   followee INT UNSIGNED NOT NULL DEFAULT 0,
   gender TINYINT UNSIGNED NOT NULL DEFAULT 0,
   birthday DATE DEFAULT NULL,
-  credits INT UNSIGNED NOT NULL DEFAULT 0,
+  credits INT UNSIGNED NOT NULL DEFAULT 500,
   level TINYINT UNSIGNED NOT NULL DEFAULT 0,
   create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -156,10 +156,10 @@ INSERT INTO tb_user (id, phone, nick_name, icon) VALUES
   (4, '13700000004', '沈嘉宁 · 行政服务部', '/assets/avatars/workplace.svg');
 
 INSERT INTO tb_user_info (user_id, introduce, credits, level) VALUES
-  (1, '员工福利与人才发展', 860, 3),
-  (2, '企业平台研发与架构实践', 720, 3),
-  (3, '办公系统、账号与安全服务', 680, 2),
-  (4, '园区服务与员工关怀', 590, 2);
+  (1, '员工福利与人才发展', 500, 3),
+  (2, '企业平台研发与架构实践', 500, 3),
+  (3, '办公系统、账号与安全服务', 500, 2),
+  (4, '园区服务与员工关怀', 500, 2);
 
 INSERT INTO tb_shop_type (id, name, sort) VALUES
   (1, '节日关怀', 1),
@@ -195,7 +195,11 @@ INSERT INTO tb_blog (id, shop_id, user_id, title, images, content, liked) VALUES
   (1, 1, 1, '【福利公告】中秋礼盒开放领取', '/assets/company/hr-announcement.svg', '本年度中秋员工礼盒已在福利中心开放。每位在职员工限领一份，成功领取后将由各园区行政统一通知发放时间。', 18),
   (2, 1, 3, '【IT提醒】请完成企业账号安全检查', '/assets/company/security-notice.svg', '请大家在本周五前检查企业账号的多因素认证状态。不要向任何人提供验证码；如发现异常登录，请立即联系信息技术部。', 12),
   (3, 1, 2, '研发分享：订单链路的幂等与补偿', '/assets/company/engineering-share.svg', '本周技术午餐会将结合福利秒杀链路，分享 Redis Lua、RocketMQ 重试、消费幂等和死信补偿的工程实践，欢迎感兴趣的同事参加。', 26),
-  (4, 1, 4, '【园区通知】国庆期间班车安排', '/assets/company/campus-notice.svg', '节日期间园区班车将按假日时刻表运行，具体班次已同步至行政服务台。需要临时加班的同事可提前一天登记。', 9);
+  (4, 1, 4, '【园区通知】国庆期间班车安排', '/assets/company/campus-notice.svg', '节日期间园区班车将按假日时刻表运行，具体班次已同步至行政服务台。需要临时加班的同事可提前一天登记。', 9),
+  (5, 6, 2, '午休健步走打卡第七天', '/assets/benefits/health.svg', '最近天气很舒服，午休后绕园区走二十分钟，下午工作更有精神。欢迎大家一起加入健步走。', 15),
+  (6, 3, 3, '周五下班前记得更新紧急联系人', '/assets/company/security-notice.svg', '员工服务中的紧急联系人信息建议每半年检查一次。有手机号变更的同事，记得及时更新。', 8),
+  (7, 2, 4, '园区咖啡角新增低糖饮品', '/assets/company/campus-notice.svg', '一楼咖啡角本周新增了两款低糖饮品，午后时段也可以使用餐饮补贴，欢迎大家来尝试。', 21),
+  (8, 3, 1, '年度体检预约时间延长', '/assets/company/hr-announcement.svg', '还没有完成预约的同事不用着急，年度体检预约窗口已经延长一周，具体时间可在福利中心查看。', 13);
 
 INSERT INTO tb_follow (user_id, follow_user_id) VALUES (2, 1), (2, 3), (2, 4), (1, 2), (4, 1);
 INSERT INTO tb_blog_like (blog_id, user_id, create_time) VALUES (1, 2, 1789992000000), (3, 2, 1789992100000);

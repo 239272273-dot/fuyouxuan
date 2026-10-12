@@ -11,8 +11,8 @@
     <groupId>com.fuyouxuan</groupId>
     <artifactId>fuyouxuan</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>fuyouxuan</name>
-    <description>Enterprise employee benefits flash-sale and community platform</description>
+    <name>福优选</name>
+    <description>企业内部福利抢购与员工社区平台</description>
     <properties>
         <java.version>1.8</java.version>
     </properties>

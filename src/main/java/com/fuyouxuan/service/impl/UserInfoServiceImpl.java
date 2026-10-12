@@ -16,4 +16,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class UserInfoServiceImpl extends ServiceImpl<UserInfoMapper, UserInfo> implements IUserInfoService {
 
+    @Override
+    public UserInfo getOrCreateDefault(Long userId) {
+        baseMapper.insertDefault(userId);
+        return getById(userId);
+    }
+
+    @Override
+    public boolean deductCredits(Long userId, Integer amount) {
+        return baseMapper.deductCredits(userId, amount) == 1;
+    }
 }

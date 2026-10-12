@@ -173,6 +173,29 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result deleteBlog(Long id) {
+        Blog blog = getById(id);
+        Long userId = UserHolder.getUser().getId();
+        if (blog == null) {
+            return Result.fail("动态不存在");
+        }
+        if (!userId.equals(blog.getUserId())) {
+            return Result.fail("只能删除自己发布的动态");
+        }
+
+        blogLikeService.remove(new QueryWrapper<BlogLike>().eq("blog_id", id));
+        removeById(id);
+
+        stringRedisTemplate.delete(BLOG_LIKED_KEY + id);
+        List<Follow> followers = followService.query().eq("follow_user_id", userId).list();
+        for (Follow follower : followers) {
+            stringRedisTemplate.opsForZSet().remove(FEED_KEY + follower.getUserId(), id.toString());
+        }
+        return Result.ok();
+    }
+
+    @Override
     public Result queryBlogOfFollow(Long max, Integer offset) {
         // 1.获取当前用户
         Long userId = UserHolder.getUser().getId();

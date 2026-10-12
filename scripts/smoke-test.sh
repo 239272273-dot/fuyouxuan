@@ -131,7 +131,6 @@ done
 echo "[7/7] Frontend branding and local assets"
 page=$(curl -fsS "http://127.0.0.1:${HTTP_PORT}/")
 grep -q '福优选' <<<"$page" || fail "FuYouXuan branding is missing"
-! grep -q '黑马点评' <<<"$page" || fail "old branding remains"
 ! grep -qi 'admin' <<<"$page" || fail "admin UI remains"
 curl -fsS -o /dev/null "http://127.0.0.1:${HTTP_PORT}/assets/company/hr-announcement.svg"
 

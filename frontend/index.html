@@ -7,7 +7,7 @@
   <title>福优选 · 企业福利中心</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 rx=%2218%22 fill=%22%23165DFF%22/><path d=%22M18 18h30v9H28v8h16v9H28v15H18z%22 fill=%22white%22/></svg>">
   <link rel="stylesheet" href="./vendor/element.css">
-  <link rel="stylesheet" href="./css/app.css?v=20261009">
+  <link rel="stylesheet" href="./css/app.css?v=20261011-2">
 </head>
 <body>
 <div id="app" v-cloak>
@@ -21,9 +21,9 @@
           <p>企业专属福利抢购、权益管理与员工社区，一个入口全部完成。</p>
         </div>
         <div class="login-proof">
-          <div><strong>原子扣减</strong><span>高并发库存保护</span></div>
-          <div><strong>异步落单</strong><span>秒杀请求快速响应</span></div>
-          <div><strong>多级缓存</strong><span>热点福利毫秒访问</span></div>
+          <div><strong>公平领取</strong><span>限量权益有序开放</span></div>
+          <div><strong>进度可查</strong><span>领取状态清晰透明</span></div>
+          <div><strong>专属权益</strong><span>一个入口便捷领取</span></div>
         </div>
       </div>
       <div class="login-panel">
@@ -79,6 +79,7 @@
           <h2>{{pageTitle}}</h2>
         </div>
         <div class="top-actions">
+          <span class="credits-badge"><i class="el-icon-coin"></i><strong>{{user.credits == null ? 500 : user.credits}}</strong> 豆</span>
           <label class="global-search">
             <i class="el-icon-search"></i>
             <input v-model.trim="searchText" placeholder="搜索福利或动态">
@@ -94,7 +95,7 @@
             <div class="hero-content">
               <span class="hero-tag">EMPLOYEE · EXCLUSIVE</span>
               <h1>本月员工专享福利<br><em>限时开放领取</em></h1>
-              <p>精选餐饮、健康、节日关怀与学习权益，Redis 原子校验保障每一次公平抢购。</p>
+              <p>精选餐饮、健康、节日关怀与学习权益，让每位员工都能公平、便捷地领取福利。</p>
               <div class="hero-actions">
                 <el-button type="primary" @click="scrollToBenefits">立即查看福利</el-button>
                 <button class="text-action" @click="navigate('orders')">我的领取记录 <i class="el-icon-right"></i></button>
@@ -104,14 +105,12 @@
               <div class="gift-orbit orbit-one"></div><div class="gift-orbit orbit-two"></div>
               <div class="gift-box"><span></span><i class="el-icon-present"></i></div>
               <div class="floating-chip chip-one">企业专享</div>
-              <div class="floating-chip chip-two">限量秒杀</div>
+              <div class="floating-chip chip-two">限量领取</div>
             </div>
           </div>
 
           <div class="stats-grid">
             <div class="stat-card"><span class="stat-icon blue"><i class="el-icon-goods"></i></span><div><small>福利分类</small><strong>{{types.length || 0}}</strong></div><span class="trend">持续更新</span></div>
-            <div class="stat-card"><span class="stat-icon green"><i class="el-icon-lightning"></i></span><div><small>秒杀通道</small><strong>16</strong></div><span class="trend">并行分片</span></div>
-            <div class="stat-card"><span class="stat-icon purple"><i class="el-icon-coin"></i></span><div><small>缓存层级</small><strong>3</strong></div><span class="trend">热点保护</span></div>
             <div class="stat-card"><span class="stat-icon orange"><i class="el-icon-chat-dot-round"></i></span><div><small>员工动态</small><strong>{{posts.length || 0}}</strong></div><span class="trend">内部分享</span></div>
           </div>
 
@@ -161,6 +160,7 @@
                 <button :class="{liked:post.isLike}" @click="toggleLike(post)"><i :class="post.isLike ? 'el-icon-star-on' : 'el-icon-star-off'"></i> {{post.liked || 0}}</button>
                 <span><i class="el-icon-chat-line-round"></i> 内部动态</span>
                 <button @click="copyPostLink(post)"><i class="el-icon-link"></i> 分享</button>
+                <button v-if="post.userId === user.id" class="danger-link" @click="deletePost(post)"><i class="el-icon-delete"></i> 删除</button>
               </div>
             </article>
             <div class="empty-state" v-if="!filteredPosts.length"><i class="el-icon-chat-dot-round"></i><h4>还没有动态</h4><p>发布第一条动态，或先关注几位同事。</p></div>
@@ -172,14 +172,15 @@
         </section>
 
         <section v-show="view === 'orders'" class="page-section">
-          <div class="section-heading section-heading--simple"><div><span class="eyebrow">MY BENEFITS</span><h3>我的福利</h3><p>查看已经成功落库的福利订单</p></div><el-button icon="el-icon-refresh" @click="loadOrders">刷新状态</el-button></div>
+          <div class="section-heading section-heading--simple"><div><span class="eyebrow">MY BENEFITS</span><h3>我的福利</h3><p>待付款订单将在 5 分钟后自动取消</p></div><el-button icon="el-icon-refresh" @click="loadOrders">刷新状态</el-button></div>
           <div class="orders-panel">
             <div class="order-row order-row--head"><span>福利订单</span><span>提交时间</span><span>状态</span><span>操作</span></div>
             <div class="order-row" v-for="order in orders" :key="order.orderId">
               <div><span class="order-icon"><i class="el-icon-present"></i></span><span><strong>{{order.voucherTitle}}</strong><small># {{order.orderId}}</small></span></div>
               <span>{{formatDate(order.createTime)}}</span>
-              <span><em class="status-dot"></em> 已受理</span>
-              <button class="link-button" @click="checkOrder(order.orderId)">查看状态</button>
+              <span :class="['order-status', order.status === 2 ? 'is-paid' : 'is-unpaid']"><em class="status-dot"></em> {{order.status === 2 ? '已付款' : '待付款'}}</span>
+              <button v-if="order.status === 1" class="link-button" @click="openOrderPayment(order)">继续付款</button>
+              <button v-else class="link-button" @click="checkOrder(order.orderId)">查看状态</button>
             </div>
             <div class="empty-state" v-if="!orders.length"><i class="el-icon-tickets"></i><h4>暂无福利订单</h4><p>去福利中心看看正在开放的员工权益。</p><el-button type="primary" @click="navigate('benefits')">浏览福利</el-button></div>
           </div>
@@ -196,7 +197,7 @@
           </div>
           <div class="profile-main">
             <div class="section-heading section-heading--simple"><div><span class="eyebrow">MY POSTS</span><h3>我的动态</h3><p>记录你在福优选社区的分享</p></div><el-button type="primary" icon="el-icon-edit" @click="showComposer = true">发布动态</el-button></div>
-            <article class="my-post" v-for="post in myPosts" :key="post.id"><div><small>{{formatDate(post.createTime)}}</small><h4>{{post.title}}</h4><p>{{post.content}}</p></div><span><i class="el-icon-star-off"></i> {{post.liked || 0}}</span></article>
+            <article class="my-post" v-for="post in myPosts" :key="post.id"><div><small>{{formatDate(post.createTime)}}</small><h4>{{post.title}}</h4><p>{{post.content}}</p></div><div class="my-post-actions"><span><i class="el-icon-star-off"></i> {{post.liked || 0}}</span><button class="danger-link" @click="deletePost(post)"><i class="el-icon-delete"></i> 删除</button></div></article>
             <div class="empty-state" v-if="!myPosts.length"><i class="el-icon-edit-outline"></i><h4>还没有发布动态</h4><p>和同事分享一条福利体验吧。</p></div>
           </div>
         </section>
@@ -215,18 +216,54 @@
     </div>
     <div class="voucher-list">
       <div class="voucher-item" v-for="voucher in vouchers" :key="voucher.id">
-        <div><span class="voucher-label">限时福利</span><h4>{{voucher.title}}</h4><p>{{voucher.subTitle}}</p><strong>¥ {{formatMoney(voucher.payValue)}} <del>¥ {{formatMoney(voucher.actualValue)}}</del></strong></div>
+        <div><span class="voucher-label">限时福利</span><h4>{{voucher.title}}</h4><p>{{voucher.subTitle}}</p><strong>{{creditPrice(voucher.payValue)}} 豆 <del>价值 ¥ {{formatMoney(voucher.actualValue)}}</del></strong></div>
         <div class="voucher-action"><span>剩余 {{voucher.stock == null ? '--' : voucher.stock}} 份</span><small>{{formatActivity(voucher)}}</small><el-button type="primary" :disabled="!canSeckill(voucher)" @click="seckill(voucher)">{{voucher.stock < 1 ? '已抢完' : '立即抢购'}}</el-button></div>
       </div>
       <div class="empty-state compact" v-if="!vouchers.length"><i class="el-icon-box"></i><h4>暂无开放福利</h4><p>新的企业权益正在配置中。</p></div>
     </div>
   </el-dialog>
 
+  <el-dialog title="订单付款" :visible.sync="paymentDialog" width="430px" custom-class="payment-dialog" :close-on-click-modal="false" @closed="stopPaymentTimer">
+    <div v-if="paymentOrder" class="payment-sheet">
+      <div class="payment-code"><i class="el-icon-full-screen"></i><span>模拟支付码</span></div>
+      <span class="payment-label">待付款订单</span>
+      <h3>{{paymentOrder.voucherTitle || '企业福利'}}</h3>
+      <p class="payment-order-id">订单号：{{paymentOrder.orderId}}</p>
+      <div class="payment-price"><strong>{{paymentOrder.payCredits || 0}}</strong><span>福利豆</span></div>
+      <div :class="['payment-countdown', paymentSeconds <= 30 ? 'is-ending' : '']">
+        <i class="el-icon-time"></i> 剩余付款时间 {{paymentCountdownText}}
+      </div>
+      <p class="payment-balance">当前余额：{{user.credits == null ? 500 : user.credits}} 豆</p>
+    </div>
+    <span slot="footer" class="payment-actions">
+      <el-button :loading="cancelling" :disabled="paymentSeconds <= 0" @click="cancelPaymentOrder">取消订单</el-button>
+      <el-button type="primary" :loading="paying" :disabled="paymentSeconds <= 0" @click="payCurrentOrder">确认支付</el-button>
+    </span>
+  </el-dialog>
+
   <el-dialog title="发布员工动态" :visible.sync="showComposer" width="620px" custom-class="composer-dialog">
     <el-form label-position="top">
       <el-form-item label="标题"><el-input v-model.trim="composer.title" maxlength="40" show-word-limit placeholder="给这条动态起个标题"></el-input></el-form-item>
       <el-form-item label="内容"><el-input type="textarea" :rows="6" v-model.trim="composer.content" maxlength="500" show-word-limit placeholder="分享福利体验、团队故事或生活灵感…"></el-input></el-form-item>
-      <el-form-item label="封面图片地址（可选）"><el-input v-model.trim="composer.images" placeholder="不填写将使用默认企业社区封面"></el-input></el-form-item>
+      <el-form-item label="动态图片（可选，最多 9 张）">
+        <el-upload
+          ref="composerUpload"
+          class="composer-upload"
+          action="/api/upload/blog"
+          list-type="picture-card"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          :headers="uploadHeaders"
+          :file-list="composerFiles"
+          :limit="9"
+          :before-upload="beforeImageUpload"
+          :on-success="handleImageUploadSuccess"
+          :on-error="handleImageUploadError"
+          :on-remove="handleImageRemove"
+          :on-exceed="handleImageExceed">
+          <i class="el-icon-plus"></i>
+        </el-upload>
+        <p class="upload-hint">支持 JPG、PNG、WebP、GIF，单张不超过 5 MB；不选择图片也可以直接发布。</p>
+      </el-form-item>
     </el-form>
     <span slot="footer"><el-button @click="showComposer = false">取消</el-button><el-button type="primary" :loading="publishing" @click="publishPost">发布动态</el-button></span>
   </el-dialog>
@@ -235,6 +272,6 @@
 <script src="./vendor/vue.js"></script>
 <script src="./vendor/axios.min.js"></script>
 <script src="./vendor/element.js"></script>
-<script src="./js/app.js?v=20261009"></script>
+<script src="./js/app.js?v=20261011-pay2"></script>
 </body>
 </html>

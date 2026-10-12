@@ -9,9 +9,14 @@ import java.time.LocalDateTime;
  */
 @Data
 public class VoucherOrderDTO {
-    private Long orderId;
+    /**
+     * Distributed IDs exceed JavaScript's safe integer range, so expose them as text.
+     */
+    private String orderId;
     private Long voucherId;
     private String voucherTitle;
     private Integer status;
+    private Integer payCredits;
     private LocalDateTime createTime;
+    private LocalDateTime expiresAt;
 }

@@ -65,6 +65,8 @@ public class UserController {
     public Result me(){
         // 获取当前登录的用户并返回
         UserDTO user = UserHolder.getUser();
+        UserInfo info = userInfoService.getOrCreateDefault(user.getId());
+        user.setCredits(info == null ? 500 : info.getCredits());
         return Result.ok(user);
     }
 
