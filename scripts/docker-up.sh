@@ -26,6 +26,6 @@ fi
 
 docker compose up -d --build --wait --wait-timeout 420
 docker compose ps
-http_port=$(sed -n 's/^HTTP_PORT=//p' .env | tail -n 1)
+http_port=$(sed -n 's/^HTTP_PORT=//p' .env | tail -n 1 | tr -d '\r')
 echo
 echo "FuYouXuan is ready: http://localhost:${http_port:-8080}"

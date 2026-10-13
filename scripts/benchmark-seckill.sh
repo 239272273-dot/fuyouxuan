@@ -14,7 +14,7 @@ WAIT_FOR_TIMEOUTS=${WRK_WAIT_FOR_TIMEOUTS:-0}
 VOUCHER_ID=${WRK_VOUCHER_ID:-900001}
 USER_ID_BASE=${WRK_USER_ID_BASE:-900000000}
 USER_COUNT=$((THREADS * USERS_PER_THREAD))
-HTTP_PORT=${HTTP_PORT:-$(sed -n 's/^HTTP_PORT=//p' .env 2>/dev/null | tail -1)}
+HTTP_PORT=${HTTP_PORT:-$(sed -n 's/^HTTP_PORT=//p' .env 2>/dev/null | tail -1 | tr -d '\r')}
 HTTP_PORT=${HTTP_PORT:-8080}
 ORDER_ID_FILE=$(mktemp /tmp/fuyouxuan-wrk-order-ids.XXXXXX)
 

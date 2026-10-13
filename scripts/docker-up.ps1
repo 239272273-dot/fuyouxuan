@@ -65,12 +65,17 @@ if (-not (Test-Path ".env")) {
     $appPassword = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
     # MySQL replication's report-password field is limited; keep this <= 32 bytes.
     $canalPassword = [guid]::NewGuid().ToString("N").Substring(0, 24)
-    @(
+    $envLines = @(
         "MYSQL_ROOT_PASSWORD=$rootPassword"
         "MYSQL_APP_PASSWORD=$appPassword"
         "CANAL_DB_PASSWORD=$canalPassword"
         "HTTP_PORT=8080"
-    ) | Set-Content -Encoding ascii ".env"
+    )
+    [IO.File]::WriteAllText(
+        (Join-Path $ProjectRoot ".env"),
+        (($envLines -join "`n") + "`n"),
+        [Text.UTF8Encoding]::new($false)
+    )
     Write-Host "Created local .env with random passwords."
 }
 

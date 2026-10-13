@@ -5,7 +5,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 cd "$PROJECT_ROOT"
 
-HTTP_PORT=${HTTP_PORT:-$(sed -n 's/^HTTP_PORT=//p' .env 2>/dev/null | tail -1)}
+HTTP_PORT=${HTTP_PORT:-$(sed -n 's/^HTTP_PORT=//p' .env 2>/dev/null | tail -1 | tr -d '\r')}
 HTTP_PORT=${HTTP_PORT:-8080}
 BASE_URL="http://127.0.0.1:${HTTP_PORT}/api"
 
@@ -91,7 +91,7 @@ for _ in $(seq 1 30); do
 done
 [[ -n $(redis_command ZSCORE "blog:liked:$blog_id" "$follower_id") ]] || fail "Canal did not synchronize the new like into Redis"
 
-echo "[5/7] Seckill acceptance and asynchronous RocketMQ order creation"
+echo "[5/7] Seckill acceptance, asynchronous order creation and payment"
 buyer_phone=$(printf '135%08d' $(( $(date +%s) % 100000000 )))
 buyer_token=$(login "$buyer_phone")
 seckill_result=$(curl -fsS -X POST -H "authorization: $buyer_token" "$BASE_URL/voucher-order/seckill/1")
@@ -102,10 +102,16 @@ for _ in $(seq 1 45); do
   status_result=$(curl -fsS -H "authorization: $buyer_token" "$BASE_URL/voucher-order/$order_id/status")
   assert_success "$status_result" "query order status"
   order_state=$(jq -r '.data.status' <<<"$status_result")
-  [[ "$order_state" == SUCCESS || "$order_state" == FAILED ]] && break
+  [[ "$order_state" == UNPAID || "$order_state" == FAILED ]] && break
   sleep 1
 done
-[[ "$order_state" == SUCCESS ]] || fail "order $order_id ended in $order_state"
+[[ "$order_state" == UNPAID ]] || fail "order $order_id ended in $order_state"
+pay_result=$(curl -fsS -X POST -H "authorization: $buyer_token" "$BASE_URL/voucher-order/$order_id/pay")
+assert_success "$pay_result" "pay order"
+[[ $(jq -r '.data.status' <<<"$pay_result") == PAID ]] || fail "order $order_id was not paid"
+status_result=$(curl -fsS -H "authorization: $buyer_token" "$BASE_URL/voucher-order/$order_id/status")
+assert_success "$status_result" "query paid order status"
+[[ $(jq -r '.data.status' <<<"$status_result") == PAID ]] || fail "paid order $order_id did not stay PAID"
 
 echo "[6/7] Canal invalidation across Redis and both Caffeine instances"
 docker compose exec -T app-1 curl -fsS http://127.0.0.1:8080/shop/1 | jq -e '.success == true' >/dev/null
