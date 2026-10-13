@@ -6,21 +6,31 @@
 
 ### 福利中心
 
+聚合展示员工可领取的各类福利，并提供分类筛选、余额查看和领取记录入口。
+
 ![福利中心](docs/screenshots/01-welfare-center.png)
 
 ### 福利详情与限量抢购
+
+查看福利说明、活动时间、兑换价格和剩余库存，并在活动开放后参与限量抢购。
 
 ![福利详情与限量抢购](docs/screenshots/02-welfare-detail.png)
 
 ### 员工广场
 
+员工可以发布内部动态、浏览同事分享，并进行点赞、关注和内容互动。
+
 ![员工广场](docs/screenshots/03-employee-square.png)
 
 ### 关注动态
 
+集中展示已关注同事的最新内容，通过 Feed 时间线持续获取内部动态。
+
 ![关注动态](docs/screenshots/04-follow-feed.png)
 
 ### 个人中心
+
+展示员工身份与个人资料，并统一管理自己发布的动态和互动数据。
 
 ![个人中心](docs/screenshots/05-profile.png)
 
