@@ -2,6 +2,28 @@
 
 福优选是一套可直接运行的企业员工福利抢购与内部信息社区。仓库包含完整前端、Nginx 网关、双 Spring Boot 后端，以及 MySQL、Redis Sentinel、RocketMQ 和 Canal。项目不包含管理员后台，访问者以普通员工身份登录和使用。
 
+## 项目演示
+
+### 福利中心
+
+![福利中心](docs/screenshots/01-welfare-center.png)
+
+### 福利详情与限量抢购
+
+![福利详情与限量抢购](docs/screenshots/02-welfare-detail.png)
+
+### 员工广场
+
+![员工广场](docs/screenshots/03-employee-square.png)
+
+### 关注动态
+
+![关注动态](docs/screenshots/04-follow-feed.png)
+
+### 个人中心
+
+![个人中心](docs/screenshots/05-profile.png)
+
 ## 已实现
 
 - 企业员工登录、信息帖发布、点赞、关注和关注动态推送
