@@ -54,18 +54,30 @@
 - Windows + WSL2：也可以在 WSL2 的 Linux 发行版中安装 Docker Engine 和 Compose 插件。
 - Linux：安装 Docker Engine 和 Compose 插件，并确保当前用户有执行 Docker 命令的权限。
 
-安装完成后，新开一个终端并执行以下命令；两条命令都能正常显示版本号，才可以继续启动项目：
+Windows 使用 Docker Desktop 时，请先打开它并等待 Linux 容器引擎就绪。在实际运行 Docker 的终端中检查：
 
 ```bash
 docker --version
 docker compose version
+docker info
 ```
+
+`docker info` 必须能返回服务端信息。只显示客户端版本号，不能证明引擎已经启动。如果 Docker Engine 装在 WSL2 中，请进入对应发行版执行这些检查；Windows 的 Docker Desktop 和 WSL 内独立安装的 Docker Engine 使用各自的容器、镜像和数据卷。
+
+请使用支持 `docker compose up --wait --wait-timeout` 的 Docker Compose v2。Docker 方式会在镜像内完成 Java/Maven 构建，本机无需另外安装 Java、Maven 或 Node.js；克隆源码需要 Git。
 
 如果电脑不能安装 Docker，就无法使用本仓库的一键启动方式。理论上可以手动安装并配置 Java 8、Maven、MySQL 8、Redis 7、RocketMQ 4.9、Canal 1.1 和 Nginx，但还需要自行完成账号、端口、网络及初始化配置，不建议用于首次体验。
 
 首次启动需要联网下载镜像和构建后端，建议为 Docker 分配至少 8 GB 内存。
 
 ### 启动项目
+
+先克隆源码并进入仓库根目录，后面的命令都在这个目录执行：
+
+```bash
+git clone https://github.com/239272273-dot/fuyouxuan.git
+cd fuyouxuan
+```
 
 Windows PowerShell：
 
@@ -74,6 +86,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\docker-up.ps1
 ```
 
 如果 Docker Engine 安装在 WSL2 中，请使用“以管理员身份运行”的 PowerShell。脚本会在项目运行期间保持 WSL2 在线，并在必要时自动修复 `localhost` 转发。
+
+脚本会先检查 Windows Docker 引擎是否可连接；如果 Docker Desktop 未运行，会尝试使用默认 WSL2 发行版中的 Docker Engine。仅能显示 Docker 版本号并不代表引擎已经运行；两个环境的引擎都不可用时，请先启动 Docker Desktop 或 WSL2 中的 Docker Engine。
 
 Linux、WSL2 或 macOS：
 
@@ -116,6 +130,14 @@ docker compose ps
 docker compose logs -f nginx app-1 app-2
 ```
 
+如果 Windows 启动脚本提示 `Using Docker Engine inside WSL2`，请在同一 WSL 发行版排查；也可以在仓库目录的 PowerShell 中执行：
+
+```powershell
+$projectPath = (Get-Location).Path
+wsl.exe --cd "$projectPath" docker compose ps
+wsl.exe --cd "$projectPath" docker compose logs --tail 100 nginx app-1 app-2 order-worker
+```
+
 ## 默认组成
 
 | 服务 | 数量 | 说明 |
@@ -140,13 +162,96 @@ docker compose logs -f nginx app-1 app-2
 bash scripts/smoke-test.sh
 ```
 
-该脚本只验证登录、Nginx 缓存、关注/动态、发帖/点赞、秒杀异步落单、Canal 缓存失效和 Redis 主从复制，不执行性能压测。简历中的 TPS 和 RTT 数据应以独立压测环境与原始报告为准。
+验收脚本需要 Bash、Docker Compose、`curl` 和 `jq`。Ubuntu / WSL Ubuntu 可以先安装：
 
-Java 单元及契约测试：
+```bash
+sudo apt-get update
+sudo apt-get install -y curl jq
+```
+
+Windows PowerShell 用户可以在仓库目录执行：
+
+```powershell
+$projectPath = (Get-Location).Path
+wsl.exe --cd "$projectPath" bash -lc "bash scripts/smoke-test.sh"
+```
+
+如果项目由 Docker Desktop 启动，需要为对应 WSL 发行版启用 Docker Desktop 的 WSL Integration，确保 WSL 中的 `docker compose ps` 能看到同一套项目容器。使用 WSL 独立 Docker Engine 时，在同一发行版运行验收与压测。
+
+该脚本验证登录、Nginx 缓存、关注/动态、发帖/点赞、秒杀异步落单与虚拟豆支付、Canal 缓存失效和 Redis 主从复制，会创建验收用户、动态和订单，并更新一条演示福利信息；它不执行性能压测。
+
+### 秒杀接口压测
+
+只在独立的本地测试环境运行，避免同时操作演示页面或运行其他压测。脚本会创建专用用户、Token、福利和订单，成功后清理这些测试数据；失败时保留数据与待处理消息用于排查，不会清空共享订单队列。失败后应先检查输出和残留数据，再决定是否重新初始化测试环境。
+
+Ubuntu / WSL Ubuntu 安装压测工具：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y wrk
+```
+
+启动项目后，在 Linux / WSL 中执行：
+
+```bash
+WRK_THREADS=8 WRK_CONNECTIONS=400 WRK_DURATION=15s WRK_USERS_PER_THREAD=20000 \
+  bash scripts/benchmark-seckill.sh
+```
+
+Windows PowerShell 在仓库目录执行同一组参数：
+
+```powershell
+$projectPath = (Get-Location).Path
+wsl.exe --cd "$projectPath" bash -lc "WRK_THREADS=8 WRK_CONNECTIONS=400 WRK_DURATION=15s WRK_USERS_PER_THREAD=20000 bash scripts/benchmark-seckill.sh"
+```
+
+这些也是脚本的默认值：8 个线程合计维护 400 条并发连接，持续施压约 15 秒，预置 `8 × 20000 = 160000` 个独立用户 Token 和对应库存。16 万是测试用户数，不是固定请求总量。每个线程使用自己的 2 万个 Token；任一线程耗尽时会报错终止，不会循环复用 Token，这次运行不能作为有效吞吐结果。更高吞吐或更长时间的测试需要提前扩大 Token 池，总用户数最多 999999。
+
+脚本输出 `WRK_SUMMARY` 和 `BENCHMARK_RESULT`：
+
+| 字段 | 含义 |
+| --- | --- |
+| `qps` | wrk 的 HTTP 请求吞吐，包含业务失败响应，不能直接当作成功下单或数据库落库 TPS |
+| `requests` / `elapsed_seconds` | 完成的 HTTP 请求数 / wrk 实际压测秒数 |
+| `accepted_per_sec` | Redis 成功受理订单数除以实际压测秒数，表示受理速率 |
+| `accepted` / `mysql_orders` | Redis 受理订单数 / 等待异步消费后查询到的 MySQL 订单数 |
+| `drain_seconds` | wrk 结束后等待异步链路收敛的秒数，按整秒统计，不是单笔订单延迟 |
+| `redis_stock` / `mysql_stock` | 两侧剩余库存，均应等于初始库存减去受理订单数 |
+| `redis_queue_depth` / `mq_diff` | Redis 队列长度 / RocketMQ 消费积压，收敛时应为 0 |
+| `http_errors` / `connect_errors` / `read_errors` / `write_errors` / `timeouts` | wrk 记录的 HTTP 错误、连接、读写及超时错误；HTTP 200 中的业务失败需要结合受理数判断 |
+
+15 秒是请求施压阶段的时长，数据库可能在它结束后继续落库。脚本额外等待异步链路收敛并校验订单与库存，因此最终落库数除以 15 秒不能称为数据库实时写入 TPS。机器配置、Docker 资源限制和是否发生错误都会影响结果；本仓库不预设或保证 6000 QPS，性能结论应保留实际输出与测试环境。
+
+可选验证未支付订单的五分钟延迟关闭与库存补偿：
+
+```bash
+WRK_WAIT_FOR_TIMEOUTS=1 bash scripts/benchmark-seckill.sh
+```
+
+该选项会额外等待延迟消息，脚本最多等待 15 分钟。环境变量名称是 `WRK_WAIT_FOR_TIMEOUTS`。
+
+### 开发检查
+
+Java 单元及契约测试需要本机 Java 8 和 Maven，或在对应开发环境中执行：
 
 ```bash
 mvn test
 ```
+
+脚本回归检查使用模拟命令，不会启动项目或发送压测请求：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tests\test-docker-scripts.ps1
+```
+
+Linux / WSL 的脚本回归检查需要 Python 3；安装 LuaJIT 库后会同时校验 Token 不复用、耗尽报错和精确统计：
+
+```bash
+sudo apt-get install -y python3 libluajit-5.1-2
+python3 scripts/tests/test-cli.py
+```
+
+GitHub Actions 会自动执行 Java 测试、脚本回归、镜像构建，并在独立 Linux Runner 中从空数据卷启动项目、运行功能验收；Windows Runner 单独检查 PowerShell 启停逻辑。CI 不执行性能压测，也不部署或重启已有云服务器。
 
 ## 部署到域名
 

@@ -85,10 +85,31 @@ if ($portLine) {
     $httpPort = ($portLine -split '=', 2)[1].Trim()
 }
 
+$windowsDockerReady = $false
 if (Get-Command docker -ErrorAction SilentlyContinue) {
+    try {
+        docker info --format '{{.ServerVersion}}' *> $null
+        $windowsDockerReady = $LASTEXITCODE -eq 0
+    } catch {
+        $windowsDockerReady = $false
+    }
+}
+
+if ($windowsDockerReady) {
     docker compose up -d --build --wait --wait-timeout 420
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker Compose startup failed. Check the errors above."
+    }
     docker compose ps
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to query Docker Compose service status."
+    }
 } elseif (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
+    wsl.exe --cd $ProjectRoot bash -lc 'command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1'
+    if ($LASTEXITCODE -ne 0) {
+        throw "No Docker engine is reachable. Start Docker Desktop or Docker Engine inside WSL2, then retry."
+    }
+    Write-Host "Using Docker Engine inside WSL2."
     Start-FuYouXuanWslKeeper
     wsl.exe --cd $ProjectRoot bash -lc "bash scripts/docker-up.sh"
     if ($LASTEXITCODE -ne 0) {
@@ -125,7 +146,7 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
 }
 
 if (-not (Test-FuYouXuanEndpoint -Port $httpPort)) {
-    throw "All containers started, but Windows still cannot reach http://localhost:$httpPort."
+    throw "Docker Compose completed, but Windows cannot reach http://localhost:$httpPort. Check the Nginx logs and local port forwarding."
 }
 
 if (-not $reportedByChild) {

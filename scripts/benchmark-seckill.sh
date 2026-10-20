@@ -9,26 +9,33 @@ THREADS=${WRK_THREADS:-8}
 CONNECTIONS=${WRK_CONNECTIONS:-400}
 DURATION=${WRK_DURATION:-15s}
 REQUEST_TIMEOUT=${WRK_TIMEOUT:-10s}
-USERS_PER_THREAD=${WRK_USERS_PER_THREAD:-7500}
+USERS_PER_THREAD=${WRK_USERS_PER_THREAD:-20000}
 WAIT_FOR_TIMEOUTS=${WRK_WAIT_FOR_TIMEOUTS:-0}
 VOUCHER_ID=${WRK_VOUCHER_ID:-900001}
 USER_ID_BASE=${WRK_USER_ID_BASE:-900000000}
+for parameter in THREADS CONNECTIONS USERS_PER_THREAD VOUCHER_ID USER_ID_BASE; do
+  [[ ${!parameter} =~ ^[1-9][0-9]*$ ]] || {
+    echo "$parameter must be a positive integer" >&2
+    exit 1
+  }
+done
 USER_COUNT=$((THREADS * USERS_PER_THREAD))
 HTTP_PORT=${HTTP_PORT:-$(sed -n 's/^HTTP_PORT=//p' .env 2>/dev/null | tail -1 | tr -d '\r')}
 HTTP_PORT=${HTTP_PORT:-8080}
-ORDER_ID_FILE=$(mktemp /tmp/fuyouxuan-wrk-order-ids.XXXXXX)
 
-if ((USER_COUNT > 999999)); then
-  echo "USER_COUNT must not exceed 999999" >&2
+if ((USER_COUNT > 999999 || CONNECTIONS < THREADS)); then
+  echo "USER_COUNT must not exceed 999999, and CONNECTIONS must be at least THREADS" >&2
   exit 1
 fi
 
-for command in docker wrk awk sed; do
+for command in docker wrk awk sed tr seq mktemp; do
   command -v "$command" >/dev/null || {
     echo "Missing required command: $command" >&2
     exit 1
   }
 done
+docker info >/dev/null
+docker compose version >/dev/null
 
 mysql_exec() {
   docker compose exec -T mysql sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" fuyouxuan' 2>/dev/null
@@ -71,6 +78,10 @@ timeout_consumed() {
 
 cleanup() {
   set +e
+  if [[ "$cleanup_ready" != 1 ]]; then
+    echo "Benchmark failed; test data and pending messages were preserved for diagnosis. Order ID file: $ORDER_ID_FILE" >&2
+    return
+  fi
   echo "Cleaning benchmark-only users, orders, tokens and voucher..."
 
   mysql_query "SELECT id FROM tb_voucher_order WHERE voucher_id=$VOUCHER_ID" \
@@ -98,9 +109,6 @@ cleanup() {
     }
   ' | redis_pipe
 
-  for partition in $(seq 0 15); do
-    redis_command DEL "seckill:order:queue:$partition" "lock:seckill:order:queue:flush:$partition" >/dev/null
-  done
   redis_command DEL "seckill:stock:$VOUCHER_ID" "seckill:order:$VOUCHER_ID" >/dev/null
 
   mysql_exec <<SQL
@@ -111,6 +119,17 @@ DELETE FROM tb_user WHERE id > $USER_ID_BASE AND id <= $((USER_ID_BASE + USER_CO
 SQL
   rm -f -- "$ORDER_ID_FILE"
 }
+
+[[ $(queue_depth) == 0 && $(mq_diff) == 0 ]] || {
+  echo "Pending orders exist. Wait for the existing workload to finish; use an isolated local test environment." >&2
+  exit 1
+}
+[[ $(mysql_query "SELECT COUNT(*) FROM tb_voucher_order WHERE voucher_id=$VOUCHER_ID") == 0 ]] || {
+  echo "Benchmark voucher already has orders. Inspect the previous run before reusing this test fixture." >&2
+  exit 1
+}
+ORDER_ID_FILE=$(mktemp /tmp/fuyouxuan-wrk-order-ids.XXXXXX)
+cleanup_ready=0
 trap cleanup EXIT
 
 echo "Preparing $USER_COUNT isolated users and tokens..."
@@ -150,9 +169,6 @@ FROM (
 WHERE n BETWEEN 1 AND $USER_COUNT;
 SQL
 
-for partition in $(seq 0 15); do
-  redis_command DEL "seckill:order:queue:$partition" "lock:seckill:order:queue:flush:$partition" >/dev/null
-done
 redis_command DEL "seckill:order:$VOUCHER_ID" >/dev/null
 redis_command SET "seckill:stock:$VOUCHER_ID" "$USER_COUNT" >/dev/null
 
@@ -173,21 +189,37 @@ awk -v threads="$THREADS" -v per="$USERS_PER_THREAD" -v base="$USER_ID_BASE" '
 echo "Running: wrk -t$THREADS -c$CONNECTIONS -d$DURATION --timeout $REQUEST_TIMEOUT -s scripts/wrk-seckill-load.lua http://127.0.0.1:$HTTP_PORT/api/voucher-order/seckill/$VOUCHER_ID"
 timeout_consumed_before=$(timeout_consumed)
 export WRK_USERS_PER_THREAD="$USERS_PER_THREAD"
+wrk_exit=0
 wrk_output=$(wrk -t"$THREADS" -c"$CONNECTIONS" -d"$DURATION" --timeout "$REQUEST_TIMEOUT" \
   -s scripts/wrk-seckill-load.lua \
-  "http://127.0.0.1:$HTTP_PORT/api/voucher-order/seckill/$VOUCHER_ID")
+  "http://127.0.0.1:$HTTP_PORT/api/voucher-order/seckill/$VOUCHER_ID" 2>&1) || wrk_exit=$?
 echo "$wrk_output"
+if ((wrk_exit != 0)); then
+  echo "wrk failed. This run is not a valid throughput result; inspect the output above." >&2
+  exit "$wrk_exit"
+fi
 
-requests=$(awk '/requests in/ {print $1}' <<<"$wrk_output")
+summary_value() {
+  awk -v key="$1" '/^WRK_SUMMARY / { for (field = 2; field <= NF; field++) { split($field, pair, "="); if (pair[1] == key) print pair[2] } }' <<<"$wrk_output"
+}
+
+requests=$(summary_value requests)
 qps=$(awk '/Requests\/sec:/ {print $2}' <<<"$wrk_output")
-elapsed_seconds=$(awk '/requests in/ {value=$4; sub(/s,?$/, "", value); print value}' <<<"$wrk_output")
+elapsed_seconds=$(summary_value elapsed_seconds)
+[[ "$requests" =~ ^[0-9]+$ && "$elapsed_seconds" =~ ^[0-9]+\.[0-9]+$ ]] && \
+  awk -v elapsed="$elapsed_seconds" 'BEGIN { exit !(elapsed > 0) }' || {
+  echo "wrk did not produce a valid WRK_SUMMARY." >&2
+  exit 1
+}
 accepted=$(redis_command HLEN "seckill:order:$VOUCHER_ID")
 final_stock=$(redis_command GET "seckill:stock:$VOUCHER_ID")
 
 echo "Waiting for Redis queues and RocketMQ to finish writing accepted orders..."
+drain_started=$SECONDS
 orders=0
 diff=-1
-for _ in $(seq 1 180); do
+depth=-1
+while ((SECONDS - drain_started < 180)); do
   orders=$(mysql_query "SELECT COUNT(*) FROM tb_voucher_order WHERE voucher_id=$VOUCHER_ID")
   depth=$(queue_depth)
   diff=$(mq_diff)
@@ -199,8 +231,9 @@ for _ in $(seq 1 180); do
 done
 
 expected_stock=$((USER_COUNT - accepted))
-business_tps=$(awk -v accepted="$accepted" -v elapsed="$elapsed_seconds" 'BEGIN { printf "%.2f", accepted/elapsed }')
-echo "BENCHMARK_RESULT requests=$requests qps=$qps business_tps=$business_tps accepted=$accepted mysql_orders=$orders redis_stock=$final_stock mq_diff=$diff"
+accepted_per_sec=$(awk -v accepted="$accepted" -v elapsed="$elapsed_seconds" 'BEGIN { printf "%.2f", accepted/elapsed }')
+mysql_stock=$(mysql_query "SELECT stock FROM tb_seckill_voucher WHERE voucher_id=$VOUCHER_ID")
+echo "BENCHMARK_RESULT requests=$requests qps=$qps accepted_per_sec=$accepted_per_sec elapsed_seconds=$elapsed_seconds drain_seconds=$((SECONDS - drain_started)) accepted=$accepted mysql_orders=$orders redis_stock=$final_stock mysql_stock=$mysql_stock redis_queue_depth=$depth mq_diff=$diff"
 
 [[ "$orders" == "$accepted" ]] || {
   echo "Accepted Redis orders and MySQL orders do not match" >&2
@@ -210,8 +243,16 @@ echo "BENCHMARK_RESULT requests=$requests qps=$qps business_tps=$business_tps ac
   echo "Redis stock does not match accepted orders" >&2
   exit 1
 }
+[[ "$mysql_stock" == "$expected_stock" && "$depth" == 0 ]] || {
+  echo "MySQL stock does not match accepted orders, or Redis still has pending orders" >&2
+  exit 1
+}
 [[ "$diff" == 0 ]] || {
   echo "RocketMQ still has pending messages" >&2
+  exit 1
+}
+((accepted > 0)) || {
+  echo "No orders were accepted. Inspect the responses before reporting throughput." >&2
   exit 1
 }
 
@@ -247,3 +288,5 @@ if [[ "$WAIT_FOR_TIMEOUTS" == "1" ]]; then
   [[ "$restored_redis_stock" == "$USER_COUNT" ]]
   [[ "$remaining_reservations" == "0" ]]
 fi
+
+cleanup_ready=1

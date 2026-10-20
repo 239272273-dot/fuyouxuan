@@ -5,6 +5,13 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 cd "$PROJECT_ROOT"
 
+for required_command in docker curl jq; do
+  command -v "$required_command" >/dev/null 2>&1 || {
+    echo "Missing required command: $required_command. Install the smoke-test dependencies listed in README.md." >&2
+    exit 1
+  }
+done
+
 HTTP_PORT=${HTTP_PORT:-$(sed -n 's/^HTTP_PORT=//p' .env 2>/dev/null | tail -1 | tr -d '\r')}
 HTTP_PORT=${HTTP_PORT:-8080}
 BASE_URL="http://127.0.0.1:${HTTP_PORT}/api"

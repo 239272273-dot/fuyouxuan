@@ -23,9 +23,26 @@ function Stop-FuYouXuanWslKeeper {
     }
 }
 
+$windowsDockerReady = $false
 if (Get-Command docker -ErrorAction SilentlyContinue) {
+    try {
+        docker info --format '{{.ServerVersion}}' *> $null
+        $windowsDockerReady = $LASTEXITCODE -eq 0
+    } catch {
+        $windowsDockerReady = $false
+    }
+}
+
+if ($windowsDockerReady) {
     docker compose down
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker Compose shutdown failed. Check the errors above."
+    }
 } elseif (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
+    wsl.exe --cd $ProjectRoot bash -lc 'command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1'
+    if ($LASTEXITCODE -ne 0) {
+        throw "No Docker engine is reachable. Start Docker Desktop or Docker Engine inside WSL2, then retry."
+    }
     wsl.exe --cd $ProjectRoot bash -lc "bash scripts/docker-down.sh"
     if ($LASTEXITCODE -ne 0) {
         throw "Docker shutdown inside WSL failed."

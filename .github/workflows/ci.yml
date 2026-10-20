@@ -8,6 +8,7 @@ on:
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -24,5 +25,39 @@ jobs:
       - name: Validate Compose configuration
         run: docker compose --env-file .env.example config --quiet
 
+      - name: Check shell syntax and command-line regressions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq libluajit-5.1-2
+          find scripts docker/mysql/init -name '*.sh' -print0 | xargs -0 -n 1 bash -n
+          python3 scripts/tests/test-cli.py
+
       - name: Build application and web images
         run: docker compose --env-file .env.example build app-1 nginx
+
+      - name: Start demo with fresh data volumes
+        run: |
+          cp .env.example .env
+          docker compose up -d --no-build --wait --wait-timeout 420
+
+      - name: Verify demo functionality
+        run: bash scripts/smoke-test.sh
+
+      - name: Show service diagnostics on failure
+        if: failure()
+        run: |
+          docker compose --env-file .env.example ps --all
+          docker compose --env-file .env.example logs --no-color --tail 100
+
+      - name: Stop CI containers
+        if: always()
+        run: docker compose --env-file .env.example down
+
+  windows-scripts:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check PowerShell startup and shutdown without Docker
+        shell: powershell
+        run: .\scripts\tests\test-docker-scripts.ps1
